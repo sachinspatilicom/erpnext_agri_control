@@ -1,0 +1,121 @@
+{
+ "actions": [],
+ "allow_rename": 0,
+ "creation": "2026-10-20 23:45:00.000000",
+ "custom": 0,
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "broker_section",
+  "broker_host",
+  "broker_port",
+  "use_tls",
+  "column_break_1",
+  "username",
+  "password",
+  "topic_prefix",
+  "behaviour_section",
+  "heartbeat_timeout_sec",
+  "column_break_2",
+  "log_retention_days"
+ ],
+ "fields": [
+  {
+   "fieldname": "broker_section",
+   "fieldtype": "Section Break",
+   "label": "MQTT Broker"
+  },
+  {
+   "default": "localhost",
+   "description": "Hostname or IP of the MQTT broker (e.g. mosquitto on this server)",
+   "fieldname": "broker_host",
+   "fieldtype": "Data",
+   "label": "Broker Host",
+   "reqd": 1
+  },
+  {
+   "default": "1883",
+   "fieldname": "broker_port",
+   "fieldtype": "Int",
+   "label": "Broker Port",
+   "reqd": 1
+  },
+  {
+   "default": "0",
+   "description": "Usually port 8883",
+   "fieldname": "use_tls",
+   "fieldtype": "Check",
+   "label": "Use TLS"
+  },
+  {
+   "fieldname": "column_break_1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "username",
+   "fieldtype": "Data",
+   "label": "Username"
+  },
+  {
+   "fieldname": "password",
+   "fieldtype": "Password",
+   "label": "Password"
+  },
+  {
+   "default": "agri",
+   "description": "All topics are <prefix>/status, <prefix>/log, <prefix>/heartbeat, <prefix>/relay/cmd/<n>, <prefix>/schedule/set",
+   "fieldname": "topic_prefix",
+   "fieldtype": "Data",
+   "label": "Topic Prefix",
+   "reqd": 1
+  },
+  {
+   "fieldname": "behaviour_section",
+   "fieldtype": "Section Break",
+   "label": "Behaviour"
+  },
+  {
+   "default": "90",
+   "description": "Controller is shown Offline if no heartbeat arrives within this time",
+   "fieldname": "heartbeat_timeout_sec",
+   "fieldtype": "Int",
+   "label": "Heartbeat Timeout (seconds)"
+  },
+  {
+   "fieldname": "column_break_2",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "90",
+   "description": "Older Agri Event Log entries are deleted daily. 0 = keep forever",
+   "fieldname": "log_retention_days",
+   "fieldtype": "Int",
+   "label": "Keep Event Logs (days)"
+  }
+ ],
+ "index_web_pages_for_search": 0,
+ "issingle": 1,
+ "links": [],
+ "modified": "2026-10-20 23:45:00.000000",
+ "modified_by": "Administrator",
+ "module": "Agri Control",
+ "name": "Agri MQTT Settings",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "print": 1,
+   "read": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 0
+}

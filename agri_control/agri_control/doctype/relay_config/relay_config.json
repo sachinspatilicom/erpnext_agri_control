@@ -1,0 +1,100 @@
+{
+ "actions": [],
+ "allow_rename": 0,
+ "autoname": "field:relay_name",
+ "creation": "2026-10-20 23:45:00.000000",
+ "custom": 0,
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "relay_name",
+  "relay_index",
+  "column_break_1",
+  "location",
+  "enabled",
+  "section_notes",
+  "description"
+ ],
+ "fields": [
+  {
+   "description": "e.g. Misting Rack A, Exhaust Fan, Grow Light 1",
+   "fieldname": "relay_name",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Relay Name",
+   "reqd": 1,
+   "unique": 1
+  },
+  {
+   "description": "Channel number used in MQTT topics (agri/relay/cmd/<index>)",
+   "fieldname": "relay_index",
+   "fieldtype": "Int",
+   "in_list_view": 1,
+   "label": "Relay Index",
+   "reqd": 1,
+   "unique": 1
+  },
+  {
+   "fieldname": "column_break_1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "location",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Location"
+  },
+  {
+   "default": "1",
+   "fieldname": "enabled",
+   "fieldtype": "Check",
+   "in_list_view": 1,
+   "label": "Enabled"
+  },
+  {
+   "fieldname": "section_notes",
+   "fieldtype": "Section Break"
+  },
+  {
+   "fieldname": "description",
+   "fieldtype": "Small Text",
+   "label": "Description"
+  }
+ ],
+ "index_web_pages_for_search": 0,
+ "links": [],
+ "modified": "2026-10-20 23:45:00.000000",
+ "modified_by": "Administrator",
+ "module": "Agri Control",
+ "name": "Relay Config",
+ "naming_rule": "By fieldname",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Agri Operator"
+  }
+ ],
+ "sort_field": "relay_index",
+ "sort_order": "ASC",
+ "states": [],
+ "title_field": "relay_name",
+ "track_changes": 1
+}
