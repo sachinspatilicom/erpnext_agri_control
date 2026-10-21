@@ -1,0 +1,116 @@
+{
+ "actions": [],
+ "allow_rename": 0,
+ "creation": "2026-10-21 09:00:00.000000",
+ "custom": 0,
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "on_time",
+  "duration_min",
+  "days",
+  "custom_days_section",
+  "sun",
+  "mon",
+  "tue",
+  "wed",
+  "thu",
+  "fri",
+  "sat",
+  "day_mask"
+ ],
+ "fields": [
+  {
+   "columns": 2,
+   "fieldname": "on_time",
+   "fieldtype": "Time",
+   "in_list_view": 1,
+   "label": "Start",
+   "reqd": 1
+  },
+  {
+   "columns": 2,
+   "default": "5",
+   "description": "1 to 180",
+   "fieldname": "duration_min",
+   "fieldtype": "Int",
+   "in_list_view": 1,
+   "label": "Minutes ON",
+   "reqd": 1
+  },
+  {
+   "columns": 2,
+   "default": "Every day",
+   "fieldname": "days",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "label": "Days",
+   "options": "Every day\nWeekdays\nWeekend\nCustom",
+   "reqd": 1
+  },
+  {
+   "depends_on": "eval:doc.days=='Custom'",
+   "fieldname": "custom_days_section",
+   "fieldtype": "Section Break",
+   "label": "Custom days"
+  },
+  {
+   "fieldname": "sun",
+   "fieldtype": "Check",
+   "label": "Sun"
+  },
+  {
+   "fieldname": "mon",
+   "fieldtype": "Check",
+   "label": "Mon"
+  },
+  {
+   "fieldname": "tue",
+   "fieldtype": "Check",
+   "label": "Tue"
+  },
+  {
+   "fieldname": "wed",
+   "fieldtype": "Check",
+   "label": "Wed"
+  },
+  {
+   "fieldname": "thu",
+   "fieldtype": "Check",
+   "label": "Thu"
+  },
+  {
+   "fieldname": "fri",
+   "fieldtype": "Check",
+   "label": "Fri"
+  },
+  {
+   "fieldname": "sat",
+   "fieldtype": "Check",
+   "label": "Sat"
+  },
+  {
+   "columns": 1,
+   "description": "bit 0 = Sun ... bit 6 = Sat (127 = every day)",
+   "fieldname": "day_mask",
+   "fieldtype": "Int",
+   "in_list_view": 1,
+   "label": "Day Mask",
+   "read_only": 1
+  }
+ ],
+ "index_web_pages_for_search": 0,
+ "istable": 1,
+ "links": [],
+ "modified": "2026-10-21 09:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Agri Control",
+ "name": "Relay Schedule Slot",
+ "owner": "Administrator",
+ "permissions": [],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 0
+}

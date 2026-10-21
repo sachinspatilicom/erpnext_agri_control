@@ -1,5 +1,5 @@
 from frappe.model.document import Document
 
 
-class RelayScheduleEntry(Document):
+class RelayScheduleSlot(Document):
     pass

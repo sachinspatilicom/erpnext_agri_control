@@ -2,17 +2,15 @@
  "actions": [],
  "allow_rename": 0,
  "autoname": "hash",
- "creation": "2026-10-20 23:45:00.000000",
+ "creation": "2026-10-21 09:00:00.000000",
  "custom": 0,
  "doctype": "DocType",
  "editable_grid": 1,
  "engine": "InnoDB",
  "field_order": [
   "event_time",
-  "level",
   "source",
   "column_break_1",
-  "topic",
   "user",
   "section_msg",
   "message"
@@ -26,16 +24,6 @@
    "read_only": 1,
    "reqd": 1,
    "search_index": 1
-  },
-  {
-   "default": "Info",
-   "fieldname": "level",
-   "fieldtype": "Select",
-   "in_list_view": 1,
-   "in_standard_filter": 1,
-   "label": "Level",
-   "options": "Info\nWarning\nError",
-   "read_only": 1
   },
   {
    "default": "Device",
@@ -52,12 +40,6 @@
    "fieldtype": "Column Break"
   },
   {
-   "fieldname": "topic",
-   "fieldtype": "Data",
-   "label": "MQTT Topic",
-   "read_only": 1
-  },
-  {
    "fieldname": "user",
    "fieldtype": "Link",
    "label": "User",
@@ -70,7 +52,7 @@
   },
   {
    "fieldname": "message",
-   "fieldtype": "Long Text",
+   "fieldtype": "Small Text",
    "in_list_view": 1,
    "label": "Message",
    "read_only": 1
@@ -79,7 +61,7 @@
  "in_create": 1,
  "index_web_pages_for_search": 0,
  "links": [],
- "modified": "2026-10-20 23:45:00.000000",
+ "modified": "2026-10-21 09:00:00.000000",
  "modified_by": "Administrator",
  "module": "Agri Control",
  "name": "Agri Event Log",

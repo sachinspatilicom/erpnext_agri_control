@@ -1,75 +1,130 @@
 {
  "actions": [],
  "allow_rename": 0,
- "autoname": "field:relay_name",
- "creation": "2026-10-20 23:45:00.000000",
+ "creation": "2026-10-21 09:00:00.000000",
  "custom": 0,
  "doctype": "DocType",
  "editable_grid": 1,
  "engine": "InnoDB",
  "field_order": [
-  "relay_name",
   "relay_index",
-  "column_break_1",
+  "relay_name",
   "location",
-  "enabled",
-  "section_notes",
-  "description"
+  "column_break_1",
+  "relay_type",
+  "last_sent",
+  "fogger_section",
+  "fog_start_hour",
+  "fog_end_hour",
+  "column_break_2",
+  "fog_pulse_sec",
+  "pulse_section",
+  "slots",
+  "master_section",
+  "master_note"
  ],
  "fields": [
   {
-   "description": "e.g. Misting Rack A, Exhaust Fan, Grow Light 1",
-   "fieldname": "relay_name",
-   "fieldtype": "Data",
+   "description": "Channel used in MQTT: agri/relay/cmd/<index>. R1 = 0, R2 = 1 ... R14 = 13",
+   "fieldname": "relay_index",
+   "fieldtype": "Int",
    "in_list_view": 1,
-   "label": "Relay Name",
+   "label": "Relay Index (0-13)",
    "reqd": 1,
    "unique": 1
   },
   {
-   "description": "Channel number used in MQTT topics (agri/relay/cmd/<index>)",
-   "fieldname": "relay_index",
-   "fieldtype": "Int",
+   "fieldname": "relay_name",
+   "fieldtype": "Data",
    "in_list_view": 1,
-   "label": "Relay Index",
-   "reqd": 1,
-   "unique": 1
+   "label": "Name",
+   "reqd": 1
+  },
+  {
+   "fieldname": "location",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Location / Zone"
   },
   {
    "fieldname": "column_break_1",
    "fieldtype": "Column Break"
   },
   {
-   "fieldname": "location",
-   "fieldtype": "Data",
+   "description": "Fixed by the firmware: R1 Master, R2 Fogger, R3-R14 timed pulses",
+   "fieldname": "relay_type",
+   "fieldtype": "Select",
    "in_list_view": 1,
    "in_standard_filter": 1,
-   "label": "Location"
+   "label": "Type",
+   "options": "Master\nFogger\nPulse",
+   "read_only": 1
   },
   {
-   "default": "1",
-   "fieldname": "enabled",
-   "fieldtype": "Check",
-   "in_list_view": 1,
-   "label": "Enabled"
+   "fieldname": "last_sent",
+   "fieldtype": "Datetime",
+   "label": "Schedule Last Sent",
+   "no_copy": 1,
+   "read_only": 1
   },
   {
-   "fieldname": "section_notes",
+   "depends_on": "eval:doc.relay_type=='Fogger'",
+   "fieldname": "fogger_section",
+   "fieldtype": "Section Break",
+   "label": "Fogger window"
+  },
+  {
+   "default": "9",
+   "fieldname": "fog_start_hour",
+   "fieldtype": "Int",
+   "label": "Active from (hour, 0-23)"
+  },
+  {
+   "default": "21",
+   "fieldname": "fog_end_hour",
+   "fieldtype": "Int",
+   "label": "Active until (hour, 0-23)"
+  },
+  {
+   "fieldname": "column_break_2",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "9",
+   "fieldname": "fog_pulse_sec",
+   "fieldtype": "Int",
+   "label": "Seconds ON per minute (1-55)"
+  },
+  {
+   "depends_on": "eval:doc.relay_type=='Pulse'",
+   "fieldname": "pulse_section",
+   "fieldtype": "Section Break",
+   "label": "Time slots"
+  },
+  {
+   "fieldname": "slots",
+   "fieldtype": "Table",
+   "label": "Slots (max 6)",
+   "options": "Relay Schedule Slot"
+  },
+  {
+   "depends_on": "eval:doc.relay_type=='Master'",
+   "fieldname": "master_section",
    "fieldtype": "Section Break"
   },
   {
-   "fieldname": "description",
-   "fieldtype": "Small Text",
-   "label": "Description"
+   "fieldname": "master_note",
+   "fieldtype": "HTML",
+   "label": "Master note",
+   "options": "<p class='text-muted'>R1 Master turns ON automatically whenever any other relay is active. No schedule needed.</p>"
   }
  ],
  "index_web_pages_for_search": 0,
  "links": [],
- "modified": "2026-10-20 23:45:00.000000",
+ "modified": "2026-10-21 09:00:00.000000",
  "modified_by": "Administrator",
  "module": "Agri Control",
  "name": "Relay Config",
- "naming_rule": "By fieldname",
  "owner": "Administrator",
  "permissions": [
   {
@@ -89,9 +144,11 @@
    "print": 1,
    "read": 1,
    "report": 1,
-   "role": "Agri Operator"
+   "role": "Agri Operator",
+   "write": 1
   }
  ],
+ "show_title_field_in_link": 1,
  "sort_field": "relay_index",
  "sort_order": "ASC",
  "states": [],

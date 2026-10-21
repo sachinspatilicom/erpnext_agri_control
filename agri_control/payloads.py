@@ -1,16 +1,150 @@
-"""Pure helpers for MQTT payloads (no Frappe imports, so they can be unit-tested anywhere).
+"""Firmware contract for relay_scheduler.ino (ESP32, 14 relays) — pure Python, no Frappe imports.
 
-If the controller firmware uses a different JSON shape, this is the one file to adapt.
+Topics (prefix "agri"):
+  <p>/relay/cmd/{0-13}  ERP -> ESP   "ON" | "OFF" | "AUTO"
+  <p>/schedule/set      ERP -> ESP   {"relay":2,"type":"pulse","entries":[{"h":9,"m":30,"dur":3,"days":127}]}
+                                     {"relay":1,"type":"fogger","startH":9,"endH":21,"pulseS":9}
+  <p>/status            ESP -> ERP   {"relays":[{"id":0,"name":"Master","state":false,"manual":false},...],
+                                      "time":"09:30:05","wifi":"192.168.1.20","rssi":-61}   (retained, every 5 s)
+  <p>/heartbeat         ESP -> ERP   "online" | "offline"   (retained, offline = MQTT last will)
+  <p>/log               ESP -> ERP   plain text, e.g. "R3 (Zone1) ON by schedule"
+
+Day mask: bit 0 = Sunday ... bit 6 = Saturday (tm_wday / DS3231). 127 = every day.
 """
 import json
-import re
 from datetime import timedelta
 
-_TRUE = {"1", "on", "true", "yes", "high"}
-_FALSE = {"0", "off", "false", "no", "low"}
-_RELAY_KEY = re.compile(r"^(?:relay|r|ch)?[_\-]?(\d{1,3})$", re.IGNORECASE)
+NUM_RELAYS = 14
+MAX_SLOTS = 6                      # MAX_SCHED_PER_RELAY in firmware
+ACTIONS = ("ON", "OFF", "AUTO")
+
+DAY_EVERY, DAY_WEEKDAYS, DAY_WEEKEND = 127, 62, 65
+DAY_KEYS = ("sun", "mon", "tue", "wed", "thu", "fri", "sat")   # bit order
+PRESETS = {"Every day": DAY_EVERY, "Weekdays": DAY_WEEKDAYS, "Weekend": DAY_WEEKEND}
+
+DEFAULT_NAMES = ["Master", "Fogger", "Zone 1", "Zone 2", "Zone 3", "Zone 4", "Zone 5",
+                 "Zone 6", "Zone 7", "Zone 8", "Zone 9", "Zone 10", "Zone 11", "Zone 12"]
 
 
+def _twice(h, m, dur):
+    return [{"h": h, "m": m, "dur": dur, "days": DAY_EVERY},
+            {"h": h + 12, "m": m, "dur": dur, "days": DAY_EVERY}]
+
+
+# Same as initDefaultSchedules() in the firmware and DEFAULT_SCHED in the old web app
+DEFAULT_SCHED = (
+    [{"type": "none"}, {"type": "fogger", "startH": 9, "endH": 21, "pulseS": 9}]
+    + [{"type": "pulse", "entries": _twice(9, 30, 3)} for _ in range(2, 9)]
+    + [{"type": "pulse", "entries": [{"h": 8, "m": m, "dur": 5, "days": DAY_EVERY}]}
+       for m in (30, 35, 40, 45, 50)]
+)
+
+
+def relay_type(index):
+    return "Master" if index == 0 else "Fogger" if index == 1 else "Pulse"
+
+
+def label(index):
+    return f"R{int(index) + 1}"
+
+
+# ------------------------------------------------------------------ days
+def mask_from_days(preset, checks=None):
+    """preset = Every day/Weekdays/Weekend/Custom; checks = dict sun..sat -> truthy."""
+    if preset in PRESETS:
+        return PRESETS[preset]
+    mask = 0
+    for bit, key in enumerate(DAY_KEYS):
+        if (checks or {}).get(key):
+            mask |= 1 << bit
+    return mask or DAY_EVERY
+
+
+def days_from_mask(mask):
+    """-> (preset, {sun: 0/1 ...})"""
+    mask = int(mask if mask not in (None, "") else DAY_EVERY) & 127 or DAY_EVERY
+    checks = {k: (mask >> b) & 1 for b, k in enumerate(DAY_KEYS)}
+    for name, val in PRESETS.items():
+        if mask == val:
+            return name, checks
+    return "Custom", checks
+
+
+# ------------------------------------------------------------------ times
+def hm(value):
+    """Frappe Time (timedelta or 'HH:MM[:SS]') -> (h, m)."""
+    if isinstance(value, timedelta):
+        total = int(value.total_seconds()) % 86400
+        return total // 3600, (total % 3600) // 60
+    parts = str(value).split(":")
+    return int(parts[0]) % 24, int(parts[1]) % 60
+
+
+def clamp(value, lo, hi, default):
+    try:
+        v = int(value)
+    except (TypeError, ValueError):
+        return default
+    return max(lo, min(hi, v))
+
+
+# ------------------------------------------------------------------ schedules
+def normalize_schedule(index, sched):
+    """Validate/clamp a schedule dict in the old web-app format. Same limits as Index.cshtml."""
+    index = int(index)
+    kind = relay_type(index)
+    sched = sched or {}
+    if kind == "Master":
+        return {"type": "none"}
+    if kind == "Fogger":
+        return {
+            "type": "fogger",
+            "startH": clamp(sched.get("startH"), 0, 23, 9),
+            "endH": clamp(sched.get("endH"), 0, 23, 21),
+            "pulseS": clamp(sched.get("pulseS"), 1, 55, 9),
+        }
+    entries = []
+    for e in (sched.get("entries") or [])[:MAX_SLOTS]:
+        days = clamp(e.get("days", DAY_EVERY), 0, 127, DAY_EVERY) or DAY_EVERY
+        entries.append({
+            "h": clamp(e.get("h"), 0, 23, 6),
+            "m": clamp(e.get("m"), 0, 59, 0),
+            "dur": clamp(e.get("dur"), 1, 180, 5),
+            "days": days,
+        })
+    return {"type": "pulse", "entries": entries}
+
+
+def schedule_payload(index, sched):
+    """Exact JSON the firmware's handleScheduleUpdate() expects. None for Master."""
+    s = normalize_schedule(index, sched)
+    if s["type"] == "none":
+        return None
+    return {"relay": int(index), **s}
+
+
+def summary(sched):
+    """Same wording as schedSummary() in the old web app."""
+    if not sched or sched.get("type") == "none":
+        return "Auto-controlled"
+
+    def h12(h):
+        return f"{h % 12 or 12}{'PM' if h >= 12 else 'AM'}"
+
+    if sched["type"] == "fogger":
+        return f"{h12(sched['startH'])} – {h12(sched['endH'])}  |  {sched['pulseS']}s ON/min"
+    if not sched.get("entries"):
+        return "No schedule"
+    out = []
+    for e in sched["entries"]:
+        d = e.get("days", DAY_EVERY)
+        tag = "" if d == DAY_EVERY else "(wkdays)" if d == DAY_WEEKDAYS else "(wkend)" if d == DAY_WEEKEND \
+            else "(" + "".join("SMTWTFS"[b] for b in range(7) if (d >> b) & 1) + ")"
+        out.append(f"{e['h'] % 12 or 12}:{e['m']:02d} {'PM' if e['h'] >= 12 else 'AM'} {e['dur']}min {tag}".rstrip())
+    return "  |  ".join(out)
+
+
+# ------------------------------------------------------------------ incoming
 def parse_json(text):
     try:
         return json.loads(text)
@@ -18,123 +152,28 @@ def parse_json(text):
         return None
 
 
-def to_bool(value):
-    """Map 1/0, true/false, "ON"/"OFF" ... to True/False. Unknown -> None."""
-    if isinstance(value, bool):
-        return value
-    if isinstance(value, (int, float)):
-        return bool(value)
-    if isinstance(value, str):
-        v = value.strip().lower()
-        if v in _TRUE:
-            return True
-        if v in _FALSE:
-            return False
-    return None
-
-
-def _int(value):
-    try:
-        return int(value)
-    except (TypeError, ValueError):
-        return None
-
-
-def normalize_status(text):
-    """Turn whatever the controller publishes on <prefix>/status into
-    {"relays": {"1": True, "2": False, ...}, "extra": {...scalar readings...}}.
-
-    Accepted shapes (examples):
-      {"relays":[1,0,1,0]}                      -> index = position (1-based)
-      {"relays":[{"id":1,"state":"ON"}, ...]}
-      {"r1":1,"r2":0,"temp":24.5,"hum":81}
-      {"relay1":"ON","relay2":"OFF"}
-      [1,0,1,0]
-    Non-relay scalar keys (temperature, humidity, uptime, rssi ...) go to "extra".
-    """
+def parse_status(text):
+    """Firmware publishStatus() JSON -> {"relays":[{id,state,manual}], time, wifi, rssi} or None."""
     data = parse_json(text)
-    relays, extra = {}, {}
-
-    if isinstance(data, dict) and ("relays" in data or "relay" in data):
-        src = data.get("relays", data.get("relay"))
-        extra = {k: v for k, v in data.items()
-                 if k not in ("relays", "relay") and not isinstance(v, (dict, list))}
-    else:
-        src = data
-
-    if isinstance(src, list):
-        for pos, item in enumerate(src, start=1):
-            if isinstance(item, dict):
-                idx = _int(item.get("id", item.get("index", item.get("relay", pos))))
-                state = item.get("state", item.get("on", item.get("status")))
-            else:
-                idx, state = pos, item
-            if idx is not None:
-                relays[str(idx)] = to_bool(state)
-    elif isinstance(src, dict):
-        for key, value in src.items():
-            if isinstance(value, (dict, list)):
-                continue
-            m = _RELAY_KEY.match(str(key))
-            if m:
-                relays[str(int(m.group(1)))] = to_bool(value)
-            elif src is data:
-                extra[key] = value
-
-    return {"relays": relays, "extra": extra}
+    if not isinstance(data, dict) or not isinstance(data.get("relays"), list):
+        return None
+    relays = []
+    for r in data["relays"]:
+        if isinstance(r, dict) and isinstance(r.get("id"), int):
+            relays.append({"id": r["id"], "state": bool(r.get("state")), "manual": bool(r.get("manual"))})
+    return {"relays": relays, "time": data.get("time"), "wifi": data.get("wifi"), "rssi": data.get("rssi")}
 
 
-def detect_level(message):
-    m = (message or "").upper()
-    if "ERR" in m or "FAIL" in m:
-        return "Error"
-    if "WARN" in m:
-        return "Warning"
-    return "Info"
+def parse_heartbeat(text):
+    return "online" if (text or "").strip().lower() == "online" else "offline"
 
 
-def day_mask(days):
-    """days = 7 truthy values, Mon..Sun. Bit 0 = Mon ... bit 6 = Sun."""
-    mask = 0
-    for bit, on in enumerate(days):
-        if on:
-            mask |= 1 << bit
-    return mask
-
-
-def hhmm(value):
-    """Frappe Time values arrive as timedelta or 'HH:MM[:SS[.ffffff]]' strings."""
-    if isinstance(value, timedelta):
-        total = int(value.total_seconds()) % 86400
-        return f"{total // 3600:02d}:{(total % 3600) // 60:02d}"
-    parts = str(value).split(":")
-    return f"{int(parts[0]):02d}:{int(parts[1]):02d}"
-
-
-def minutes_of_day(value):
-    h, m = hhmm(value).split(":")
-    return int(h) * 60 + int(m)
-
-
-def build_schedule_payload(relay_index, enabled, schedule_type, days,
-                           entries=None, on_minutes=None, off_minutes=None):
-    """One message per relay on <prefix>/schedule/set, kept small for ESP buffers.
-
-    Fixed:  {"relay":3,"en":1,"type":"fixed","days":127,"win":[["06:00","06:15"],["18:00","18:10"]]}
-    Cyclic: {"relay":3,"en":1,"type":"cyclic","days":127,"on":5,"off":25}
-    """
-    payload = {
-        "relay": int(relay_index),
-        "en": 1 if enabled else 0,
-        "type": "cyclic" if schedule_type == "Cyclic" else "fixed",
-        "days": day_mask(days),
-    }
-    if payload["type"] == "cyclic":
-        payload["on"] = int(on_minutes or 0)
-        payload["off"] = int(off_minutes or 0)
-    else:
-        payload["win"] = [[hhmm(on), hhmm(off)] for on, off in (entries or [])]
-    return payload
+def valid_command(index, action):
+    try:
+        i = int(index)
+    except (TypeError, ValueError):
+        return False
+    return 0 <= i < NUM_RELAYS and str(action) in ACTIONS
 
 
 def dumps(obj):

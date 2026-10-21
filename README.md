@@ -1,65 +1,75 @@
-# Agri Control (Frappe app)
+# Agri Control for ERPNext
 
-Relay control, schedules and live MQTT monitoring for the NutrigreenBite farm, running inside
-ERPNext at `erp.nutrigreenbite.com`. Replaces the ASP.NET + SignalR + SQLite app.
+ERPNext port of the **AgriControl_WebApp** (ASP.NET + SignalR + SQLite) for the 14-relay
+ESP32 controller (`relay_scheduler.ino`) on HiveMQ Cloud. It runs inside
+`erp.nutrigreenbite.com`, so no Windows server is needed.
 
-| Old (ASP.NET)             | Here                                                         |
-|---------------------------|--------------------------------------------------------------|
-| `MqttService.cs`          | `agri_control/listener.py`, run by supervisor (`bench ... agri-mqtt`) |
-| SignalR                   | `frappe.publish_realtime` → `frappe.realtime.on` (Socket.IO) |
-| SQLite log                | **Agri Event Log** DocType (MariaDB), auto-purged daily      |
-| `RelayApiController`      | `agri_control/api.py` (whitelisted, role-checked)            |
-| `Index.cshtml`            | Desk page **/app/agri-dashboard**                            |
-| Schedule editor JS        | **Relay Schedule** DocType form + "Send to Controller" button |
+| Old (ASP.NET)                          | Here                                                              |
+|----------------------------------------|-------------------------------------------------------------------|
+| `MqttService.cs`                       | `agri_control/listener.py`, run by supervisor (`bench … agri-mqtt`) |
+| SignalR `AgriHub`                      | Frappe realtime (`agri_status`, `agri_heartbeat`, `agri_broker`, `agri_log`) |
+| `RelayApiController` / `AgriHub.Send*` | `agri_control/api.py` (role-checked)                              |
+| SQLite `agri_log.db`                   | **Agri Event Log** DocType (MariaDB), purged after N days         |
+| `Index.cshtml`                         | Desk page **/app/agri-dashboard**                                 |
+| Browser localStorage (names, locations, schedules, farm) | **Relay Config** (R1–R14) and **Agri MQTT Settings** — shared by all users |
 
 ## Install
 
 ```bash
 cd /home/frappe/frappe-bench
-# copy the agri_control folder into apps/  (or: bench get-app <git-url>)
-bench pip install -e apps/agri_control          # also installs paho-mqtt
-grep -qx agri_control sites/apps.txt || echo agri_control >> sites/apps.txt
-bench --site erp.nutrigreenbite.com install-app agri_control
-bench build --app agri_control
-bench restart
-
-# start the listener (one per site)
-sudo cp apps/agri_control/deploy/supervisor-agri-mqtt.conf /etc/supervisor/conf.d/agri-mqtt.conf
-sudo supervisorctl reread && sudo supervisorctl update
-tail -f logs/agri-mqtt.log
+bench get-app https://github.com/sachinspatilicom/erpnext_agri_control.git
+# if the folder is apps/erpnext_agri_control:
+#   mv apps/erpnext_agri_control apps/agri_control && bench pip install -e apps/agri_control
+bench --site erp.nutrigreenbite.com install-app agri_control   # creates R1–R14 with firmware defaults
+bench build --app agri_control && bench restart
 ```
 
-For a quick foreground test instead of supervisor: `bench --site erp.nutrigreenbite.com agri-mqtt`.
+Update later: `cd apps/agri_control && git pull && cd ../.. && bench --site erp.nutrigreenbite.com migrate && bench build --app agri_control && bench restart && sudo supervisorctl restart agri-mqtt`
 
-## First-time setup in ERPNext
+## Set up
 
-1. **Agri MQTT Settings** — broker host/port, username/password, topic prefix (`agri`). Click **Test Connection**.
-   Restart the listener after changing broker settings: `sudo supervisorctl restart agri-mqtt`.
-2. **Relay Config** — one row per relay: name, *Relay Index* (the number the controller uses), location.
-3. **Relay Schedule** — one enabled schedule per relay, Fixed Times or Cyclic, with days. Save → **Send to Controller**.
-4. Give staff the **Agri Operator** role (dashboard, ON/OFF, edit schedules). System Manager has everything.
-5. Open **/app/agri-dashboard**.
+1. **/app/agri-mqtt-settings**: farm name and location, broker host `xxxx.s1.eu.hivemq.cloud`, port `8883`,
+   **Use TLS** ticked, username and password, prefix `agri`. Click **Test Connection**.
+2. Start the listener. First run it in the foreground: `bench --site erp.nutrigreenbite.com agri-mqtt`.
+   For permanent use:
+   ```bash
+   sudo cp apps/agri_control/deploy/supervisor-agri-mqtt.conf /etc/supervisor/conf.d/agri-mqtt.conf
+   sudo supervisorctl reread && sudo supervisorctl update
+   ```
+3. Open **/app/agri-dashboard**. Use the page menu, **⋯ → Import from old web app**, to copy names,
+   locations and schedules from the browser where you used the old app.
+4. Give staff the **Agri Operator** role. Only System Manager can clear the log or change MQTT settings.
+5. Turn off the old ASP.NET app so commands and logs aren't duplicated.
 
-## MQTT topic contract (firmware must match)
+Old SQLite log (optional): copy `App_Data/agri_log.db` from the Windows server, then
+`bench --site erp.nutrigreenbite.com execute agri_control.migrate.import_sqlite_log --kwargs '{"path":"/home/frappe/agri_log.db"}'`
 
-Prefix `agri` shown; it is configurable.
+## Dashboard
 
-| Topic                    | Direction        | Payload |
-|--------------------------|------------------|---------|
-| `agri/status`            | controller → ERP | JSON relay states, any of: `{"relays":[1,0,1]}`, `{"relays":[{"id":1,"state":"ON"}]}`, `{"r1":1,"r2":0,"temp":24.5,"hum":81}`. Extra scalar keys (temp, hum, rssi…) show as readings. |
-| `agri/log`               | controller → ERP | Plain text. Contains `ERR`/`FAIL` → Error, `WARN` → Warning. |
-| `agri/heartbeat`         | controller → ERP | Anything (text or JSON). Controller shows Offline after *Heartbeat Timeout* seconds of silence. |
-| `agri/relay/cmd/<index>` | ERP → controller | `ON` or `OFF` (QoS 1) |
-| `agri/schedule/set`      | ERP → controller | One message **per relay** (small, fits ESP buffers):<br>`{"relay":3,"en":1,"type":"fixed","days":127,"win":[["06:00","06:15"],["18:00","18:10"]]}`<br>`{"relay":3,"en":1,"type":"cyclic","days":127,"on":5,"off":25}` |
-| `agri/ping`              | ERP → controller | Sent by Test Connection; controller may ignore it. |
+Status badges (Device, Broker, Date, Time, Signal, IP), 14 relay cards (ON / OFF / AUTO, click a name or
+location to edit it, Edit schedule), and the event log with date filter (defaults to today), search,
+Load more and Clear. Everything updates live, without refreshing the page.
+**Send all schedules** re-sends R2–R14 so the ESP32 matches ERPNext. The ESP32 never reports its
+schedules back, so ERPNext is the master copy.
 
-`days` is a bit mask: bit 0 = Mon … bit 6 = Sun (127 = every day). A window whose OFF time is earlier
-than its ON time runs past midnight. If your firmware expects a different shape, change only
-`agri_control/payloads.py` (`normalize_status`, `build_schedule_payload`).
+## MQTT contract (unchanged from the firmware)
 
-## Notes
+| Topic | Direction | Payload |
+|---|---|---|
+| `agri/relay/cmd/{0-13}` | ERP → ESP | `ON`, `OFF` or `AUTO` (R1 = 0 … R14 = 13) |
+| `agri/schedule/set` | ERP → ESP | `{"relay":2,"type":"pulse","entries":[{"h":9,"m":30,"dur":3,"days":127}]}` (max 6 entries) · `{"relay":1,"type":"fogger","startH":9,"endH":21,"pulseS":9}` |
+| `agri/status` | ESP → ERP | retained, every 5 s: `{"relays":[{"id":0,"name":"Master","state":false,"manual":false},…],"time":"09:30:05","wifi":"192.168.1.20","rssi":-61}` |
+| `agri/heartbeat` | ESP → ERP | retained `online`, MQTT last-will `offline` |
+| `agri/log` | ESP → ERP | text, e.g. `R3 (Zone1) ON by schedule` |
 
-- Relay ON/OFF changes are logged only when the state actually changes in `agri/status`, so frequent
-  status messages don't flood the database. Every command sent from the dashboard is logged with the user.
-- Live updates go to logged-in desk users; the API itself only answers System Manager / Agri Operator.
-- Run only **one** listener per site, otherwise every log line is stored twice.
+Days bitmask: **bit 0 = Sunday … bit 6 = Saturday** (127 every day, 62 weekdays, 65 weekend).
+R1 Master has no schedule (it follows the others). R2 Fogger uses a window plus seconds per minute.
+
+## Code map
+
+- `payloads.py`: firmware contract, defaults, validation and summaries (pure Python)
+- `listener.py`: MQTT subscriber, reconnects automatically
+- `mqtt.py`: settings, one-shot publish and log helper
+- `api.py`: dashboard and command API
+- `agri_control/page/agri_dashboard/agri_dashboard.js`: the dashboard
+- `agri_control/doctype/*`: Relay Config, Relay Schedule Slot, Agri MQTT Settings, Agri Event Log

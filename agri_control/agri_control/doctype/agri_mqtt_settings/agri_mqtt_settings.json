@@ -1,12 +1,16 @@
 {
  "actions": [],
  "allow_rename": 0,
- "creation": "2026-10-20 23:45:00.000000",
+ "creation": "2026-10-21 09:00:00.000000",
  "custom": 0,
  "doctype": "DocType",
  "editable_grid": 1,
  "engine": "InnoDB",
  "field_order": [
+  "farm_section",
+  "farm_name",
+  "column_break_f",
+  "farm_location",
   "broker_section",
   "broker_host",
   "broker_port",
@@ -16,34 +20,49 @@
   "password",
   "topic_prefix",
   "behaviour_section",
-  "heartbeat_timeout_sec",
-  "column_break_2",
   "log_retention_days"
  ],
  "fields": [
   {
+   "fieldname": "farm_section",
+   "fieldtype": "Section Break",
+   "label": "Farm"
+  },
+  {
+   "default": "Agri Controller",
+   "fieldname": "farm_name",
+   "fieldtype": "Data",
+   "label": "Farm / Site Name"
+  },
+  {
+   "fieldname": "column_break_f",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "farm_location",
+   "fieldtype": "Data",
+   "label": "Location / Address"
+  },
+  {
    "fieldname": "broker_section",
    "fieldtype": "Section Break",
-   "label": "MQTT Broker"
+   "label": "MQTT Broker (HiveMQ Cloud)"
   },
   {
-   "default": "localhost",
-   "description": "Hostname or IP of the MQTT broker (e.g. mosquitto on this server)",
+   "description": "e.g. xxxxxxxx.s1.eu.hivemq.cloud",
    "fieldname": "broker_host",
    "fieldtype": "Data",
-   "label": "Broker Host",
-   "reqd": 1
+   "label": "Broker Host"
   },
   {
-   "default": "1883",
+   "default": "8883",
    "fieldname": "broker_port",
    "fieldtype": "Int",
-   "label": "Broker Port",
-   "reqd": 1
+   "label": "Broker Port"
   },
   {
-   "default": "0",
-   "description": "Usually port 8883",
+   "default": "1",
+   "description": "Required for HiveMQ Cloud (port 8883)",
    "fieldname": "use_tls",
    "fieldtype": "Check",
    "label": "Use TLS"
@@ -64,31 +83,19 @@
   },
   {
    "default": "agri",
-   "description": "All topics are <prefix>/status, <prefix>/log, <prefix>/heartbeat, <prefix>/relay/cmd/<n>, <prefix>/schedule/set",
+   "description": "Must match the ESP32 firmware (agri). Use e.g. agritest for a dry run.",
    "fieldname": "topic_prefix",
    "fieldtype": "Data",
-   "label": "Topic Prefix",
-   "reqd": 1
+   "label": "Topic Prefix"
   },
   {
    "fieldname": "behaviour_section",
    "fieldtype": "Section Break",
-   "label": "Behaviour"
+   "label": "Event Log"
   },
   {
    "default": "90",
-   "description": "Controller is shown Offline if no heartbeat arrives within this time",
-   "fieldname": "heartbeat_timeout_sec",
-   "fieldtype": "Int",
-   "label": "Heartbeat Timeout (seconds)"
-  },
-  {
-   "fieldname": "column_break_2",
-   "fieldtype": "Column Break"
-  },
-  {
-   "default": "90",
-   "description": "Older Agri Event Log entries are deleted daily. 0 = keep forever",
+   "description": "Older entries are deleted daily. 0 = keep forever",
    "fieldname": "log_retention_days",
    "fieldtype": "Int",
    "label": "Keep Event Logs (days)"
@@ -97,7 +104,7 @@
  "index_web_pages_for_search": 0,
  "issingle": 1,
  "links": [],
- "modified": "2026-10-20 23:45:00.000000",
+ "modified": "2026-10-21 09:00:00.000000",
  "modified_by": "Administrator",
  "module": "Agri Control",
  "name": "Agri MQTT Settings",
