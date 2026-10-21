@@ -6,7 +6,8 @@ from frappe.utils import cint, getdate, now_datetime
 
 from agri_control.mqtt import (CACHE_BROKER, CACHE_HEARTBEAT, CACHE_STATUS, add_log, cache,
                                mqtt_publish)
-from agri_control.payloads import NUM_RELAYS, label, normalize_schedule, valid_command
+from agri_control.payloads import (FOG2, FOG2_MIN_FW, NUM_RELAYS, label, normalize_schedule,
+                                   valid_command)
 
 ROLES = ("System Manager", "Agri Operator")
 
@@ -49,6 +50,7 @@ def get_dashboard_data():
         "broker": cache().get_value(CACHE_BROKER),   # None => listener not running
         "configured": bool(s.broker_host),
         "is_manager": "System Manager" in frappe.get_roles(),
+        "fw": _device_fw(),
     }
 
 
@@ -100,10 +102,26 @@ def save_farm_info(farm_name=None, farm_location=None):
 
 
 # ---------------------------------------------------------------- schedules
+def _device_fw():
+    status = cache().get_value(CACHE_STATUS) or {}
+    return status.get("fw") or 1
+
+
+def _check_fw(doc):
+    """Old firmware (v1) treats ANY fogger message as Fogger 1 — never send it R14 fogger settings."""
+    if doc.relay_index == FOG2 and _device_fw() < FOG2_MIN_FW:
+        frappe.throw(
+            f"The ESP32 is running firmware v{_device_fw()}, which doesn't know R14 is Fogger 2 "
+            f"(it would change Fogger 1 instead). Flash firmware v{FOG2_MIN_FW} first. "
+            "The schedule is saved in ERPNext and can be sent afterwards.",
+            title="Firmware update needed")
+
+
 def _push(doc):
     payload = doc.get_payload()
     if payload is None:
         return False
+    _check_fw(doc)
     mqtt_publish("schedule/set", payload, qos=1)
     doc.db_set("last_sent", now_datetime(), update_modified=False)
     return True
@@ -145,12 +163,17 @@ def push_schedule(relay_index):
 def push_all_schedules():
     """Re-send R2..R14 so the device matches ERPNext exactly."""
     _check()
-    count = 0
+    count, skipped = 0, []
     for name in frappe.get_all("Relay Config", order_by="relay_index asc", pluck="name"):
-        if _push(frappe.get_doc("Relay Config", name)):
+        doc = frappe.get_doc("Relay Config", name)
+        if doc.relay_index == FOG2 and _device_fw() < FOG2_MIN_FW:
+            skipped.append(f"{doc.name} (needs firmware v{FOG2_MIN_FW})")
+            continue
+        if _push(doc):
             count += 1
-    add_log(f"All schedules sent to device ({count} relays)", source="User", user=frappe.session.user)
-    return {"count": count}
+    note = f"; skipped {', '.join(skipped)}" if skipped else ""
+    add_log(f"All schedules sent to device ({count} relays){note}", source="User", user=frappe.session.user)
+    return {"count": count, "skipped": skipped}
 
 
 # ---------------------------------------------------------------- event log
@@ -200,11 +223,11 @@ def import_old_app(data):
     updated = 0
     for idx in range(NUM_RELAYS):
         doc = _relay(idx)
-        if idx < len(names) and names[idx]:
+        if idx < len(names) and names[idx] and not (idx == FOG2 and str(names[idx]).startswith("Zone")):
             doc.relay_name = str(names[idx])
         if idx < len(locs) and locs[idx] is not None:
             doc.location = str(locs[idx])
-        if idx < len(scheds) and isinstance(scheds[idx], dict):
+        if idx < len(scheds) and isinstance(scheds[idx], dict) and idx != FOG2:  # old app: R14 was a zone
             doc.set_schedule(normalize_schedule(idx, scheds[idx]))
         doc.save(ignore_permissions=True)
         updated += 1

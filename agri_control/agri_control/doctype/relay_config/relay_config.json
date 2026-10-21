@@ -51,7 +51,7 @@
    "fieldtype": "Column Break"
   },
   {
-   "description": "Fixed by the firmware: R1 Master, R2 Fogger, R3-R14 timed pulses",
+   "description": "Fixed by the firmware: R1 Master, R2 Fogger 1, R3-R13 timed slots, R14 Fogger 2 (firmware v2)",
    "fieldname": "relay_type",
    "fieldtype": "Select",
    "in_list_view": 1,
@@ -71,7 +71,7 @@
    "depends_on": "eval:doc.relay_type=='Fogger'",
    "fieldname": "fogger_section",
    "fieldtype": "Section Break",
-   "label": "Fogger window"
+   "label": "Fogger window and pulse"
   },
   {
    "default": "9",
@@ -91,9 +91,10 @@
   },
   {
    "default": "9",
+   "description": "R2 runs first in each minute, R14 right after it. R2 + R14 seconds must be 60 or less.",
    "fieldname": "fog_pulse_sec",
    "fieldtype": "Int",
-   "label": "Seconds ON per minute (1-55)"
+   "label": "Seconds ON per minute"
   },
   {
    "depends_on": "eval:doc.relay_type=='Pulse'",

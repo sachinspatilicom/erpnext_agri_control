@@ -310,7 +310,11 @@ class AgriDashboard {
 	pushAll() {
 		frappe.confirm(__("Send every relay schedule (R2–R14) to the device now?"), () => {
 			frappe.call({ method: "agri_control.api.push_all_schedules", freeze: true })
-				.then((r) => frappe.show_alert({ message: __("{0} schedules sent", [r.message.count]), indicator: "green" }));
+				.then((r) => {
+					const m = r.message;
+					frappe.show_alert({ message: __("{0} schedules sent", [m.count]), indicator: "green" });
+					if (m.skipped && m.skipped.length) frappe.msgprint(__("Not sent: {0}", [m.skipped.join(", ")]));
+				});
 		});
 	}
 
@@ -361,6 +365,7 @@ class AgriDashboard {
 	openSched(idx) {
 		const r = this.relays.find((x) => x.index === idx);
 		this.edit = JSON.parse(JSON.stringify(r.schedule));
+		this.editIdx = idx;
 		const isMaster = this.edit.type === "none";
 		this.sd = new frappe.ui.Dialog({
 			title: __("Edit schedule — {0} {1}", [r.label, r.name]),
@@ -387,15 +392,31 @@ class AgriDashboard {
 			return;
 		}
 		if (s.type === "fogger") {
+			// R2 runs first in each minute, R14 right after it; together max 60 s
+			const other = this.relays.find((x) => x.index === (this.editIdx === 1 ? 13 : 1));
+			const otherS = other && other.type === "Fogger" ? other.schedule.pulseS : 0;
+			const maxS = Math.min(this.editIdx === 1 ? 55 : 59, 60 - otherS);
+			const first = this.editIdx === 1;
+			const timing = !other || other.type !== "Fogger" ? "" : first
+				? __("Runs first in each minute: seconds 0 – {0}. R14 Fogger 2 then runs {1}s right after.", ["<b class='ag-from'>" + s.pulseS + "</b>", otherS])
+				: __("Runs right after R2 Fogger 1 in each minute: seconds {0} – {1}. Never at the same time.", [otherS, "<b class='ag-to'>" + (otherS + s.pulseS) + "</b>"]);
+			const fwNote = !first && (this.data.fw || 1) < 2
+				? `<p class="ag-note" style="color:var(--text-on-orange)">${__("The ESP32 is on firmware v{0}. Flash firmware v2 before sending Fogger 2 settings.", [this.data.fw || 1])}</p>` : "";
 			$b.html(`
 				<div class="ag-se">
 					<div class="ag-r"><span class="ag-lbl" style="min-width:120px">${__("Active window")}</span>
 						<input class="form-control ag-in" id="ag-fsh" type="number" min="0" max="23" value="${s.startH}"><span class="ag-lbl">:00 ${__("to")}</span>
 						<input class="form-control ag-in" id="ag-feh" type="number" min="0" max="23" value="${s.endH}"><span class="ag-lbl">:00 (24h)</span></div>
 					<div class="ag-r"><span class="ag-lbl" style="min-width:120px">${__("Pulse ON / min")}</span>
-						<input class="form-control ag-in" id="ag-fps" type="number" min="1" max="55" value="${s.pulseS}"><span class="ag-lbl">${__("seconds")}</span></div>
+						<input class="form-control ag-in" id="ag-fps" type="number" min="1" max="${maxS}" value="${s.pulseS}"><span class="ag-lbl">${__("seconds (max {0})", [maxS])}</span></div>
 					<p class="ag-note">${__("Fogger turns ON for the set seconds every minute within the active window.")}</p>
+					${timing ? `<p class="ag-note">${timing}</p>` : ""}${fwNote}
 				</div>`);
+			$b.find("#ag-fps").on("input", (e) => {
+				const v = parseInt(e.target.value, 10) || 0;
+				if (first) $b.find(".ag-from").text(v); else $b.find(".ag-to").text(otherS + v);
+			});
+			this.foggerMax = maxS;
 			return;
 		}
 		s.entries = s.entries || [];
@@ -447,7 +468,7 @@ class AgriDashboard {
 		if (s.type === "fogger") {
 			s.startH = clamp($b.find("#ag-fsh").val(), 0, 23, 9);
 			s.endH = clamp($b.find("#ag-feh").val(), 0, 23, 21);
-			s.pulseS = clamp($b.find("#ag-fps").val(), 1, 55, 9);
+			s.pulseS = clamp($b.find("#ag-fps").val(), 1, this.foggerMax || 55, 9);
 			return;
 		}
 		$b.find(".ag-se").each((i, el) => {

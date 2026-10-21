@@ -57,13 +57,16 @@ schedules back, so ERPNext is the master copy.
 | Topic | Direction | Payload |
 |---|---|---|
 | `agri/relay/cmd/{0-13}` | ERP → ESP | `ON`, `OFF` or `AUTO` (R1 = 0 … R14 = 13) |
-| `agri/schedule/set` | ERP → ESP | `{"relay":2,"type":"pulse","entries":[{"h":9,"m":30,"dur":3,"days":127}]}` (max 6 entries) · `{"relay":1,"type":"fogger","startH":9,"endH":21,"pulseS":9}` |
+| `agri/schedule/set` | ERP → ESP | `{"relay":2,"type":"pulse","entries":[{"h":9,"m":30,"dur":3,"days":127}]}` (max 6 entries) · `{"relay":1,"type":"fogger","startH":9,"endH":21,"pulseS":9}` · `{"relay":13,"type":"fogger",…}` (R14, fw v2) |
 | `agri/status` | ESP → ERP | retained, every 5 s: `{"relays":[{"id":0,"name":"Master","state":false,"manual":false},…],"time":"09:30:05","wifi":"192.168.1.20","rssi":-61}` |
 | `agri/heartbeat` | ESP → ERP | retained `online`, MQTT last-will `offline` |
 | `agri/log` | ESP → ERP | text, e.g. `R3 (Zone1) ON by schedule` |
 
 Days bitmask: **bit 0 = Sunday … bit 6 = Saturday** (127 every day, 62 weekdays, 65 weekend).
-R1 Master has no schedule (it follows the others). R2 Fogger uses a window plus seconds per minute.
+R1 Master has no schedule (it follows the others). R2 Fogger 1 and R14 Fogger 2 (firmware v2) each have
+their own hour window and seconds per minute. Every minute R2 runs first (seconds 0–P1) and R14 right
+after it (P1–P1+P2), so they never run together; P1 + P2 must be 60 or less. The firmware reports its
+version as `"fw"` in `agri/status`; ERPNext only sends R14 fogger settings to firmware v2 or later.
 
 ## Code map
 

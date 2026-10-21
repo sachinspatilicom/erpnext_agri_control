@@ -2,9 +2,9 @@ import frappe
 from frappe.model.document import Document
 from frappe.utils import cint
 
-from agri_control.payloads import (DAY_KEYS, MAX_SLOTS, NUM_RELAYS, clamp, days_from_mask, hm,
-                                   label, mask_from_days, normalize_schedule, relay_type,
-                                   schedule_payload, summary)
+from agri_control.payloads import (DAY_KEYS, FOG1, FOG2, MAX_SLOTS, NUM_RELAYS, clamp,
+                                   days_from_mask, fogger_conflict, hm, label, mask_from_days,
+                                   normalize_schedule, relay_type, schedule_payload, summary)
 
 
 class RelayConfig(Document):
@@ -22,7 +22,13 @@ class RelayConfig(Document):
 
         self.fog_start_hour = clamp(self.fog_start_hour, 0, 23, 9)
         self.fog_end_hour = clamp(self.fog_end_hour, 0, 23, 21)
-        self.fog_pulse_sec = clamp(self.fog_pulse_sec, 1, 55, 9)
+        self.fog_pulse_sec = clamp(self.fog_pulse_sec, 1, 55 if idx == FOG1 else 59, 9)
+        if self.relay_type == "Fogger":
+            other = label(FOG2 if idx == FOG1 else FOG1)
+            other_pulse = frappe.db.get_value("Relay Config", other, "fog_pulse_sec")
+            err = fogger_conflict(idx, self.fog_pulse_sec, other_pulse)
+            if err:
+                frappe.throw(err, title="Foggers overlap")
 
         if self.relay_type != "Pulse":
             self.slots = []
@@ -63,4 +69,4 @@ class RelayConfig(Document):
         return schedule_payload(self.relay_index, self.get_schedule())
 
     def get_summary(self):
-        return summary(self.get_schedule())
+        return summary(self.get_schedule(), cint(self.relay_index))

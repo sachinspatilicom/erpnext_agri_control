@@ -3,12 +3,14 @@
 Topics (prefix "agri"):
   <p>/relay/cmd/{0-13}  ERP -> ESP   "ON" | "OFF" | "AUTO"
   <p>/schedule/set      ERP -> ESP   {"relay":2,"type":"pulse","entries":[{"h":9,"m":30,"dur":3,"days":127}]}
-                                     {"relay":1,"type":"fogger","startH":9,"endH":21,"pulseS":9}
+                                     {"relay":1,"type":"fogger","startH":9,"endH":21,"pulseS":9}    Fogger 1 (R2)
+                                     {"relay":13,"type":"fogger","startH":9,"endH":21,"pulseS":9}   Fogger 2 (R14, fw >= 2)
   <p>/status            ESP -> ERP   {"relays":[{"id":0,"name":"Master","state":false,"manual":false},...],
-                                      "time":"09:30:05","wifi":"192.168.1.20","rssi":-61}   (retained, every 5 s)
+                                      "time":"09:30:05","wifi":"192.168.1.20","rssi":-61,"fw":2}   (retained, every 5 s)
   <p>/heartbeat         ESP -> ERP   "online" | "offline"   (retained, offline = MQTT last will)
   <p>/log               ESP -> ERP   plain text, e.g. "R3 (Zone1) ON by schedule"
 
+Foggers: R2 runs seconds [0, P1) of every minute, R14 runs [P1, P1+P2) right after it; P1 + P2 <= 60.
 Day mask: bit 0 = Sunday ... bit 6 = Saturday (tm_wday / DS3231). 127 = every day.
 """
 import json
@@ -17,13 +19,16 @@ from datetime import timedelta
 NUM_RELAYS = 14
 MAX_SLOTS = 6                      # MAX_SCHED_PER_RELAY in firmware
 ACTIONS = ("ON", "OFF", "AUTO")
+FOG1, FOG2 = 1, 13                 # R2, R14
+FOGGERS = (FOG1, FOG2)
+FOG2_MIN_FW = 2                    # firmware version that knows R14 is Fogger 2
 
 DAY_EVERY, DAY_WEEKDAYS, DAY_WEEKEND = 127, 62, 65
 DAY_KEYS = ("sun", "mon", "tue", "wed", "thu", "fri", "sat")   # bit order
 PRESETS = {"Every day": DAY_EVERY, "Weekdays": DAY_WEEKDAYS, "Weekend": DAY_WEEKEND}
 
 DEFAULT_NAMES = ["Master", "Fogger", "Zone 1", "Zone 2", "Zone 3", "Zone 4", "Zone 5",
-                 "Zone 6", "Zone 7", "Zone 8", "Zone 9", "Zone 10", "Zone 11", "Zone 12"]
+                 "Zone 6", "Zone 7", "Zone 8", "Zone 9", "Zone 10", "Zone 11", "Fogger 2"]
 
 
 def _twice(h, m, dur):
@@ -36,12 +41,13 @@ DEFAULT_SCHED = (
     [{"type": "none"}, {"type": "fogger", "startH": 9, "endH": 21, "pulseS": 9}]
     + [{"type": "pulse", "entries": _twice(9, 30, 3)} for _ in range(2, 9)]
     + [{"type": "pulse", "entries": [{"h": 8, "m": m, "dur": 5, "days": DAY_EVERY}]}
-       for m in (30, 35, 40, 45, 50)]
+       for m in (30, 35, 40, 45)]
+    + [{"type": "fogger", "startH": 9, "endH": 21, "pulseS": 9}]          # R14 Fogger 2 (fw v2)
 )
 
 
 def relay_type(index):
-    return "Master" if index == 0 else "Fogger" if index == 1 else "Pulse"
+    return "Master" if int(index) == 0 else "Fogger" if int(index) in FOGGERS else "Pulse"
 
 
 def label(index):
@@ -101,7 +107,7 @@ def normalize_schedule(index, sched):
             "type": "fogger",
             "startH": clamp(sched.get("startH"), 0, 23, 9),
             "endH": clamp(sched.get("endH"), 0, 23, 21),
-            "pulseS": clamp(sched.get("pulseS"), 1, 55, 9),
+            "pulseS": clamp(sched.get("pulseS"), 1, 55 if index == FOG1 else 59, 9),
         }
     entries = []
     for e in (sched.get("entries") or [])[:MAX_SLOTS]:
@@ -123,7 +129,7 @@ def schedule_payload(index, sched):
     return {"relay": int(index), **s}
 
 
-def summary(sched):
+def summary(sched, index=None):
     """Same wording as schedSummary() in the old web app."""
     if not sched or sched.get("type") == "none":
         return "Auto-controlled"
@@ -132,7 +138,8 @@ def summary(sched):
         return f"{h % 12 or 12}{'PM' if h >= 12 else 'AM'}"
 
     if sched["type"] == "fogger":
-        return f"{h12(sched['startH'])} – {h12(sched['endH'])}  |  {sched['pulseS']}s ON/min"
+        after = " after R2" if index == FOG2 else ""
+        return f"{h12(sched['startH'])} – {h12(sched['endH'])}  |  {sched['pulseS']}s ON/min{after}"
     if not sched.get("entries"):
         return "No schedule"
     out = []
@@ -161,7 +168,17 @@ def parse_status(text):
     for r in data["relays"]:
         if isinstance(r, dict) and isinstance(r.get("id"), int):
             relays.append({"id": r["id"], "state": bool(r.get("state")), "manual": bool(r.get("manual"))})
-    return {"relays": relays, "time": data.get("time"), "wifi": data.get("wifi"), "rssi": data.get("rssi")}
+    return {"relays": relays, "time": data.get("time"), "wifi": data.get("wifi"), "rssi": data.get("rssi"),
+            "fw": data.get("fw") if isinstance(data.get("fw"), int) else 1}
+
+
+def fogger_conflict(index, pulse_s, other_pulse_s):
+    """Error text if R2 + R14 seconds don't fit in one minute, else None."""
+    if int(pulse_s) + int(other_pulse_s or 0) <= 60:
+        return None
+    other = "R14 Fogger 2" if int(index) == FOG1 else "R2 Fogger"
+    return (f"Fogger 1 and Fogger 2 run one after the other inside each minute, so their seconds must add up "
+            f"to 60 or less. {other} uses {other_pulse_s}s, so this one can be at most {60 - int(other_pulse_s)}s.")
 
 
 def parse_heartbeat(text):
