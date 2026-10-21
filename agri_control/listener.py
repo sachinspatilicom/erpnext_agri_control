@@ -21,7 +21,7 @@ from agri_control.mqtt import (BROKER_TTL, CACHE_BROKER, CACHE_HEARTBEAT, CACHE_
                                cache, get_conn_params)
 from agri_control.payloads import parse_heartbeat, parse_status
 
-state = {"connected": False}
+state = {"connected": False, "error": None, "host": None}
 
 
 def _say(msg):
@@ -44,12 +44,19 @@ def _ensure_db():
         _say("database reconnected")
 
 
-def set_broker(connected, push=True):
+def broker_info():
+    return {"connected": state["connected"], "error": None if state["connected"] else state["error"],
+            "host": state["host"], "ts": str(now_datetime())}
+
+
+def set_broker(connected, push=True, error=None):
     state["connected"] = connected
-    cache().set_value(CACHE_BROKER, {"connected": connected, "ts": str(now_datetime())},
-                      expires_in_sec=BROKER_TTL)
+    if error:
+        state["error"] = error
+    info = broker_info()
+    cache().set_value(CACHE_BROKER, info, expires_in_sec=BROKER_TTL)
     if push:
-        frappe.publish_realtime("agri_broker", {"connected": connected})
+        frappe.publish_realtime("agri_broker", info)
 
 
 # ---------------------------------------------------------------- handlers
@@ -78,14 +85,19 @@ def handle_log(payload):
 
 # ---------------------------------------------------------------- paho callbacks
 def on_connect(client, userdata, flags, reason_code, properties=None):
-    if reason_code.is_failure:
-        _say(f"broker refused connection: {reason_code}")
-        return
-    p = userdata["prefix"]
-    client.subscribe([(f"{p}/status", 0), (f"{p}/heartbeat", 1), (f"{p}/log", 1)])
-    _say(f"connected, subscribed to {p}/status, {p}/heartbeat, {p}/log")
-    _ensure_db()
-    set_broker(True)
+    try:
+        if reason_code.is_failure:
+            _say(f"broker refused connection: {reason_code}")
+            set_broker(False, error=f"Broker refused login: {reason_code} (check username / password)")
+            return
+        p = userdata["prefix"]
+        client.subscribe([(f"{p}/status", 0), (f"{p}/heartbeat", 1), (f"{p}/log", 1)])
+        _say(f"connected, subscribed to {p}/status, {p}/heartbeat, {p}/log")
+        _ensure_db()
+        state["error"] = None
+        set_broker(True)
+    except Exception as e:
+        _say(f"on_connect error: {e}")
 
 
 def on_disconnect(client, userdata, flags, reason_code, properties=None):
@@ -142,6 +154,7 @@ def run(stop_after=None):
     """stop_after: seconds, for tests only."""
     p = get_conn_params()
     client = build_client(p)
+    state["host"] = f"{p['host']}:{p['port']}{' TLS' if p['tls'] else ''} prefix={p['prefix']}"
     _say(f"starting for site {frappe.local.site} -> {p['host']}:{p['port']} (prefix {p['prefix']})")
     client.connect_async(p["host"], p["port"], keepalive=30)
 
@@ -159,7 +172,8 @@ def run(stop_after=None):
                 connecting_since, delay = None, 1
             elif rc != mqtt.MQTT_ERR_SUCCESS or (connecting_since and now - connecting_since > 30):
                 connecting_since, next_try = None, now + delay
-                _say(f"connection lost/failed ({rc}); retrying in {delay}s")
+                state["error"] = state["error"] or f"Connection lost: {mqtt.error_string(rc)}"
+                _say(f"connection lost/failed ({mqtt.error_string(rc)}); retrying in {delay}s")
                 delay = min(delay * 2, 60)
                 if state["connected"]:
                     try:
@@ -171,7 +185,12 @@ def run(stop_after=None):
                 client.reconnect()
                 connecting_since = now
             except Exception as e:
+                state["error"] = f"Cannot reach {p['host']}:{p['port']}: {e}"
                 _say(f"connect failed: {e}; retrying in {delay}s")
+                try:
+                    set_broker(False, push=False)
+                except Exception:
+                    pass
                 next_try = now + delay
                 delay = min(delay * 2, 60)
         else:
@@ -180,8 +199,8 @@ def run(stop_after=None):
         if now - last_beat > 15:
             last_beat = now
             try:
-                cache().set_value(CACHE_BROKER, {"connected": client.is_connected(),
-                                                 "ts": str(now_datetime())}, expires_in_sec=BROKER_TTL)
+                state["connected"] = client.is_connected()
+                cache().set_value(CACHE_BROKER, broker_info(), expires_in_sec=BROKER_TTL)
             except Exception:
                 pass
 

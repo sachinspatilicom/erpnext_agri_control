@@ -116,6 +116,7 @@ class AgriDashboard {
 				<button class="btn btn-default btn-xs agri-farm-edit">${__("Edit farm")}</button>
 			</div>
 			<div class="agri-warn" style="display:none"></div>
+			<div class="agri-warn agri-brokererr" style="display:none"></div>
 			<div class="agri-status">
 				<span class="agri-sb fail" data-b="hb">${__("Device: Offline")}</span>
 				<span class="agri-sb warn" data-b="broker">${__("Broker: Checking…")}</span>
@@ -220,9 +221,17 @@ class AgriDashboard {
 		else this.badge("hb", __("Device: Offline"), "fail");
 	}
 	applyBroker(b) {
-		if (!b) this.badge("broker", __("Listener: not running"), "fail");
-		else if (b.connected) this.badge("broker", __("Broker: Connected"), "ok");
-		else this.badge("broker", __("Broker: Disconnected"), "fail");
+		const $e = this.$root.find(".agri-brokererr");
+		if (!b) {
+			this.badge("broker", __("Listener: not running"), "fail");
+			$e.html(__("The MQTT listener is not running on the server. Run: <code>sudo supervisorctl restart agri-mqtt</code>")).show();
+		} else if (b.connected) {
+			this.badge("broker", __("Broker: Connected"), "ok");
+			$e.hide();
+		} else {
+			this.badge("broker", __("Broker: Disconnected"), "fail");
+			$e.html(`${__("Broker")}: ${this.esc(b.host || "")}<br>${this.esc(b.error || __("Connecting…"))}`).show();
+		}
 	}
 	applyStatus(s) {
 		if (!s || !s.relays) return;
