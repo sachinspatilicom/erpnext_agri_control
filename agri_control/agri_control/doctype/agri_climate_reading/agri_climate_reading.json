@@ -1,0 +1,128 @@
+{
+ "actions": [],
+ "allow_rename": 0,
+ "autoname": "hash",
+ "creation": "2026-10-21 10:30:00.000000",
+ "custom": 0,
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "reading_time",
+  "temperature",
+  "humidity",
+  "column_break_1",
+  "samples",
+  "section_range",
+  "temp_min",
+  "temp_max",
+  "column_break_2",
+  "hum_min",
+  "hum_max"
+ ],
+ "fields": [
+  {
+   "fieldname": "reading_time",
+   "fieldtype": "Datetime",
+   "in_list_view": 1,
+   "label": "Time",
+   "read_only": 1,
+   "reqd": 1,
+   "search_index": 1
+  },
+  {
+   "fieldname": "temperature",
+   "fieldtype": "Float",
+   "in_list_view": 1,
+   "label": "Temperature (\u00b0C)",
+   "precision": "1",
+   "read_only": 1
+  },
+  {
+   "fieldname": "humidity",
+   "fieldtype": "Float",
+   "in_list_view": 1,
+   "label": "Humidity (%RH)",
+   "precision": "1",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "samples",
+   "fieldtype": "Int",
+   "label": "Samples averaged",
+   "read_only": 1
+  },
+  {
+   "fieldname": "section_range",
+   "fieldtype": "Section Break",
+   "label": "Range in this period"
+  },
+  {
+   "fieldname": "temp_min",
+   "fieldtype": "Float",
+   "label": "Temp min",
+   "precision": "1",
+   "read_only": 1
+  },
+  {
+   "fieldname": "temp_max",
+   "fieldtype": "Float",
+   "label": "Temp max",
+   "precision": "1",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_2",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "hum_min",
+   "fieldtype": "Float",
+   "label": "Humidity min",
+   "precision": "1",
+   "read_only": 1
+  },
+  {
+   "fieldname": "hum_max",
+   "fieldtype": "Float",
+   "label": "Humidity max",
+   "precision": "1",
+   "read_only": 1
+  }
+ ],
+ "in_create": 1,
+ "index_web_pages_for_search": 0,
+ "links": [],
+ "modified": "2026-10-21 10:30:00.000000",
+ "modified_by": "Administrator",
+ "module": "Agri Control",
+ "name": "Agri Climate Reading",
+ "naming_rule": "Random",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "delete": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager"
+  },
+  {
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Agri Operator"
+  }
+ ],
+ "sort_field": "reading_time",
+ "sort_order": "DESC",
+ "states": [],
+ "title_field": "reading_time",
+ "track_changes": 0
+}

@@ -12,6 +12,7 @@ handles reconnects, and refreshes a "broker" cache key that expires if this proc
 so the dashboard can show Broker: Connected / Disconnected / Listener not running.
 """
 import time
+from datetime import datetime
 
 import frappe
 import paho.mqtt.client as mqtt
@@ -19,9 +20,9 @@ from frappe.utils import now_datetime
 
 from agri_control.mqtt import (BROKER_TTL, CACHE_BROKER, CACHE_HEARTBEAT, CACHE_STATUS, add_log,
                                cache, get_conn_params)
-from agri_control.payloads import parse_heartbeat, parse_status
+from agri_control.payloads import ClimateAverager, parse_heartbeat, parse_status
 
-state = {"connected": False, "error": None, "host": None}
+state = {"connected": False, "error": None, "host": None, "climate": ClimateAverager(0)}
 
 
 def _say(msg):
@@ -65,9 +66,25 @@ def handle_status(payload):
     if status is None:
         _say(f"ignored status payload: {payload[:120]}")
         return
-    status["received_at"] = str(now_datetime())
+    now = now_datetime()
+    status["received_at"] = str(now)
     cache().set_value(CACHE_STATUS, status)
     frappe.publish_realtime("agri_status", status)
+    row = state["climate"].add(now.timestamp(), status.get("temp"), status.get("hum"))
+    if row:
+        save_climate(row)
+
+
+def save_climate(row):
+    """One Agri Climate Reading per window (time = end of the window)."""
+    doc = frappe.get_doc({
+        "doctype": "Agri Climate Reading",
+        "reading_time": datetime.fromtimestamp(row["window_end"]),
+        **{k: row[k] for k in ("temperature", "humidity", "temp_min", "temp_max", "hum_min", "hum_max", "samples")},
+    }).insert(ignore_permissions=True)
+    frappe.publish_realtime("agri_climate", {"reading_time": str(doc.reading_time),
+                                             "temperature": row["temperature"], "humidity": row["humidity"]},
+                            after_commit=True)
 
 
 def handle_heartbeat(payload):
@@ -153,6 +170,8 @@ def build_client(p):
 def run(stop_after=None):
     """stop_after: seconds, for tests only."""
     p = get_conn_params()
+    minutes = frappe.db.get_single_value("Agri MQTT Settings", "climate_log_minutes")
+    state["climate"] = ClimateAverager(5 if minutes is None else minutes)
     client = build_client(p)
     state["host"] = f"{p['host']}:{p['port']}{' TLS' if p['tls'] else ''} prefix={p['prefix']}"
     _say(f"starting for site {frappe.local.site} -> {p['host']}:{p['port']} (prefix {p['prefix']})")

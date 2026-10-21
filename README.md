@@ -68,6 +68,26 @@ their own hour window and seconds per minute. Every minute R2 runs first (second
 after it (P1–P1+P2), so they never run together; P1 + P2 must be 60 or less. The firmware reports its
 version as `"fw"` in `agri/status`; ERPNext only sends R14 fogger settings to firmware v2 or later.
 
+## Temperature / humidity sensor (firmware v3)
+
+Renke **RS-WS-N01** (RS485 Modbus-RTU, address 1, 4800 baud 8N1) on the ESP32 through a TTL↔RS485 adapter:
+
+| From | To |
+|---|---|
+| Sensor brown (+) | +24V on the **always-on** side (not after the R1 Master relay) |
+| Sensor black (−) | 24V − (same GND as the ESP32) |
+| Sensor yellow (A) | adapter A+ |
+| Sensor blue (B) | adapter B− |
+| Adapter TXD / RO | ESP32 GPIO34 |
+| Adapter RXD / DI | ESP32 GPIO5 |
+| Adapter VCC / GND | ESP32 3V3 / GND |
+
+MAX485 module: also wire DE+RE together to GPIO2 and set `RS485_DE_PIN 2` in the sketch.
+The ESP32 reads every 5 s and adds `"sensor":1,"temp":24.5,"hum":81.2` to `agri/status`
+(`"sensor":0` when it stops answering, logged once). ERPNext shows live badges, saves the
+5-minute average (with min/max) in **Agri Climate Reading**, and draws 24 h / 7 day / 30 day charts.
+Settings: *Save a reading every (minutes)* and *Keep readings (days)* in Agri MQTT Settings.
+
 ## Code map
 
 - `payloads.py`: firmware contract, defaults, validation and summaries (pure Python)

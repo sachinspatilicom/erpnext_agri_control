@@ -168,8 +168,47 @@ def parse_status(text):
     for r in data["relays"]:
         if isinstance(r, dict) and isinstance(r.get("id"), int):
             relays.append({"id": r["id"], "state": bool(r.get("state")), "manual": bool(r.get("manual"))})
+    def num(v):
+        return round(float(v), 1) if isinstance(v, (int, float)) and not isinstance(v, bool) else None
+
+    sensor = data.get("sensor")  # firmware v3+: 1 ok / 0 not responding; missing = no sensor support
     return {"relays": relays, "time": data.get("time"), "wifi": data.get("wifi"), "rssi": data.get("rssi"),
-            "fw": data.get("fw") if isinstance(data.get("fw"), int) else 1}
+            "fw": data.get("fw") if isinstance(data.get("fw"), int) else 1,
+            "sensor": int(sensor) if isinstance(sensor, (int, bool)) else None,
+            "temp": num(data.get("temp")) if sensor else None,
+            "hum": num(data.get("hum")) if sensor else None}
+
+
+class ClimateAverager:
+    """Collects temp/hum samples and returns one averaged row per fixed window (aligned to the clock)."""
+
+    def __init__(self, minutes):
+        self.window = max(int(minutes or 0), 0) * 60
+        self.key, self.t, self.h = None, [], []
+
+    def add(self, ts_epoch, temp, hum):
+        """Returns a finished row dict when a window closes, else None."""
+        if not self.window or temp is None or hum is None:
+            return None
+        key = int(ts_epoch // self.window)
+        done = None
+        if self.key is not None and key != self.key and self.t:
+            done = self.flush()
+        self.key = key
+        self.t.append(temp)
+        self.h.append(hum)
+        return done
+
+    def flush(self):
+        if not self.t:
+            return None
+        row = {"window_start": self.key * self.window, "window_end": (self.key + 1) * self.window,
+               "temperature": round(sum(self.t) / len(self.t), 1), "humidity": round(sum(self.h) / len(self.h), 1),
+               "temp_min": round(min(self.t), 1), "temp_max": round(max(self.t), 1),
+               "hum_min": round(min(self.h), 1), "hum_max": round(max(self.h), 1),
+               "samples": len(self.t)}
+        self.t, self.h = [], []
+        return row
 
 
 def fogger_conflict(index, pulse_s, other_pulse_s):

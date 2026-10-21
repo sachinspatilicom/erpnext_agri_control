@@ -62,6 +62,16 @@ const AGRI_CSS = `
 .agri-sum { font-size:11px; color:var(--text-muted); margin-top:5px; line-height:1.45; }
 
 .agri-h { font-size:var(--text-lg); font-weight:600; margin-bottom:8px; }
+.agri-sb.climate { font-weight:600; font-variant-numeric:tabular-nums; }
+.agri-clim { margin-bottom:22px; }
+.agri-clim-head { display:flex; flex-wrap:wrap; align-items:center; gap:8px 16px; margin-bottom:8px; }
+.agri-clim-head .agri-h { margin:0; }
+.agri-clim-range .btn.active { background:var(--text-color); color:var(--bg-color, #fff); }
+.agri-clim-stats { color:var(--text-muted); font-size:var(--text-sm); font-variant-numeric:tabular-nums; }
+.agri-clim-grid { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+.agri-clim-box { background:var(--card-bg); border:1px solid var(--border-color); border-radius:10px; padding:10px 12px 0; min-width:0; }
+.agri-clim-box .t { font-size:var(--text-sm); font-weight:600; }
+@media (max-width:800px) { .agri-clim-grid { grid-template-columns:1fr; } }
 .agri-logtools { display:flex; flex-wrap:wrap; align-items:center; gap:8px; margin-bottom:8px; }
 .agri-logtools .agri-date { width:170px; }
 .agri-logtools .agri-search { flex:1 1 200px; max-width:340px; }
@@ -124,8 +134,25 @@ class AgriDashboard {
 				<span class="agri-sb" data-b="time">${__("Time")}: --:--:--</span>
 				<span class="agri-sb" data-b="rssi">${__("Signal")}: --</span>
 				<span class="agri-sb" data-b="wifi">IP: --</span>
+				<span class="agri-sb climate" data-b="temp" style="display:none"></span>
+				<span class="agri-sb climate" data-b="hum" style="display:none"></span>
 			</div>
 			<div class="agri-grid"></div>
+			<section class="agri-clim" style="display:none">
+				<div class="agri-clim-head">
+					<div class="agri-h">${__("Temperature & humidity")}</div>
+					<div class="btn-group btn-group-sm agri-clim-range" role="group">
+						<button class="btn btn-default active" data-h="24">${__("24 hours")}</button>
+						<button class="btn btn-default" data-h="168">${__("7 days")}</button>
+						<button class="btn btn-default" data-h="720">${__("30 days")}</button>
+					</div>
+					<span class="agri-clim-stats"></span>
+				</div>
+				<div class="agri-clim-grid">
+					<div class="agri-clim-box"><div class="t">${__("Temperature °C")}</div><div class="agri-chart-t"></div></div>
+					<div class="agri-clim-box"><div class="t">${__("Humidity %RH")}</div><div class="agri-chart-h"></div></div>
+				</div>
+			</section>
 			<div class="agri-h">${__("Event Log")}</div>
 			<div class="agri-logtools">
 				<input type="date" class="form-control agri-date" aria-label="${__("Filter by date")}">
@@ -184,6 +211,13 @@ class AgriDashboard {
 		frappe.realtime.on("agri_heartbeat", (h) => this.applyHeartbeat(h));
 		frappe.realtime.on("agri_broker", (b) => this.applyBroker(b));
 		frappe.realtime.on("agri_log", (row) => this.liveLog(row));
+		frappe.realtime.on("agri_climate", () => { if (this.climHours <= 48) this.loadClimate(); });
+		$r.find(".agri-clim-range .btn").on("click", (e) => {
+			$r.find(".agri-clim-range .btn").removeClass("active");
+			$(e.currentTarget).addClass("active");
+			this.climHours = +$(e.currentTarget).attr("data-h");
+			this.loadClimate();
+		});
 	}
 
 	refresh() {
@@ -204,6 +238,40 @@ class AgriDashboard {
 			this.applyBroker(d.broker);
 		});
 		this.loadLog(true);
+		this.loadClimate();
+	}
+
+	// ------------------------------------------------------------ climate
+	loadClimate() {
+		this.climHours = this.climHours || 24;
+		frappe.call({ method: "agri_control.api.get_climate", type: "GET", args: { hours: this.climHours } }).then((r) => {
+			const d = r.message, $sec = this.$root.find(".agri-clim");
+			if (!d.rows.length) {
+				// nothing saved yet: show the section only once the sensor reports
+				$sec.toggle(!!(this.lastStatus && this.lastStatus.sensor != null));
+				$sec.find(".agri-clim-stats").text(__("No readings saved yet. The first one is saved a few minutes after the sensor reports."));
+				$sec.find(".agri-chart-t, .agri-chart-h").empty();
+				return;
+			}
+			$sec.show();
+			const st = d.stats || {};
+			$sec.find(".agri-clim-stats").text(__("Temp {0}–{1} °C, avg {2}   |   Humidity {3}–{4} %, avg {5}",
+				[st.temp_min, st.temp_max, st.temp_avg, st.hum_min, st.hum_max, st.hum_avg]));
+			const fmt = (t) => {
+				const x = frappe.datetime.str_to_obj(t), p = (n) => String(n).padStart(2, "0");
+				return d.hours <= 48 ? `${p(x.getHours())}:${p(x.getMinutes())}` : `${p(x.getDate())}/${p(x.getMonth() + 1)} ${p(x.getHours())}h`;
+			};
+			const labels = d.rows.map((x) => fmt(x.t));
+			const draw = (sel, values, color) => new frappe.Chart(this.$root.find(sel)[0], {
+				type: "line", height: 200, colors: [color],
+				data: { labels, datasets: [{ values }] },
+				axisOptions: { xIsSeries: 1, xAxisMode: "tick" },
+				lineOptions: { hideDots: 1, regionFill: 1, spline: 1 },
+				tooltipOptions: { formatTooltipY: (v) => (v == null ? "" : Number(v).toFixed(1)) },
+			});
+			draw(".agri-chart-t", d.rows.map((x) => x.temp), "#e67e22");
+			draw(".agri-chart-h", d.rows.map((x) => x.hum), "#2980b9");
+		});
 	}
 
 	pollLive() {
@@ -238,6 +306,16 @@ class AgriDashboard {
 		if (s.time) this.badge("time", `${__("Time")}: ${s.time}`);
 		if (s.rssi) this.badge("rssi", `${__("Signal")}: ${s.rssi} dBm`);
 		if (s.wifi) this.badge("wifi", `IP: ${s.wifi}`);
+		this.lastStatus = s;
+		const $t = this.$root.find('[data-b="temp"]'), $h = this.$root.find('[data-b="hum"]');
+		if (s.sensor == null) { $t.hide(); $h.hide(); }
+		else if (s.sensor && s.temp != null) {
+			this.badge("temp", `${Number(s.temp).toFixed(1)} °C`, "climate ok"); $t.show();
+			this.badge("hum", `${Number(s.hum).toFixed(1)} %RH`, "climate ok"); $h.show();
+			this.$root.find(".agri-clim").show();
+		} else {
+			this.badge("temp", __("Sensor: not responding"), "climate fail"); $t.show(); $h.hide();
+		}
 		s.relays.forEach((r) => {
 			const $c = this.$root.find(`#agri-card-${r.id}`);
 			if (!$c.length) return;

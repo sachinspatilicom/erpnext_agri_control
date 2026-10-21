@@ -20,7 +20,11 @@
   "password",
   "topic_prefix",
   "behaviour_section",
-  "log_retention_days"
+  "log_retention_days",
+  "climate_section",
+  "climate_log_minutes",
+  "column_break_c",
+  "climate_retention_days"
  ],
  "fields": [
   {
@@ -99,12 +103,35 @@
    "fieldname": "log_retention_days",
    "fieldtype": "Int",
    "label": "Keep Event Logs (days)"
+  },
+  {
+   "fieldname": "climate_section",
+   "fieldtype": "Section Break",
+   "label": "Temperature / Humidity"
+  },
+  {
+   "default": "5",
+   "description": "Average of the sensor values over this period is saved in Agri Climate Reading. 0 = don't save.",
+   "fieldname": "climate_log_minutes",
+   "fieldtype": "Int",
+   "label": "Save a reading every (minutes)"
+  },
+  {
+   "fieldname": "column_break_c",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "0",
+   "description": "0 = keep forever (about 105,000 rows per year at 5 minutes).",
+   "fieldname": "climate_retention_days",
+   "fieldtype": "Int",
+   "label": "Keep readings (days)"
   }
  ],
  "index_web_pages_for_search": 0,
  "issingle": 1,
  "links": [],
- "modified": "2026-10-21 09:00:00.000000",
+ "modified": "2026-10-21 10:30:00.000000",
  "modified_by": "Administrator",
  "module": "Agri Control",
  "name": "Agri MQTT Settings",

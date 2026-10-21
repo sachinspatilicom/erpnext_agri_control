@@ -2,7 +2,7 @@
 import json
 
 import frappe
-from frappe.utils import cint, getdate, now_datetime
+from frappe.utils import add_to_date, cint, getdate, now_datetime
 
 from agri_control.mqtt import (CACHE_BROKER, CACHE_HEARTBEAT, CACHE_STATUS, add_log, cache,
                                mqtt_publish)
@@ -196,6 +196,28 @@ def get_log(limit=50, offset=0, search=None, date=None):
     total = frappe.db.count("Agri Event Log", filters)
     return {"items": items, "total": total, "limit": limit, "offset": offset,
             "hasMore": offset + len(items) < total}
+
+
+@frappe.whitelist()
+def get_climate(hours=24):
+    """Readings for the chart + min / max / average over the period.
+    Up to 48 h: every saved reading (5-min). Longer: hourly averages."""
+    _check()
+    hours = min(max(cint(hours) or 24, 1), 24 * 31)
+    since = add_to_date(now_datetime(), hours=-hours)
+    if hours <= 48:
+        rows = frappe.db.sql("""select reading_time as t, temperature as temp, humidity as hum
+            from `tabAgri Climate Reading` where reading_time >= %s order by reading_time""", since, as_dict=True)
+    else:
+        rows = frappe.db.sql("""select date_format(reading_time, '%%Y-%%m-%%d %%H:00:00') as t,
+                round(avg(temperature), 1) as temp, round(avg(humidity), 1) as hum
+            from `tabAgri Climate Reading` where reading_time >= %s
+            group by date_format(reading_time, '%%Y-%%m-%%d %%H:00:00') order by t""", since, as_dict=True)
+    stats = frappe.db.sql("""select min(temp_min) as temp_min, max(temp_max) as temp_max,
+            round(avg(temperature), 1) as temp_avg, min(hum_min) as hum_min, max(hum_max) as hum_max,
+            round(avg(humidity), 1) as hum_avg, count(*) as n
+        from `tabAgri Climate Reading` where reading_time >= %s""", since, as_dict=True)
+    return {"hours": hours, "rows": rows, "stats": stats[0] if stats else {}}
 
 
 @frappe.whitelist(methods=["POST"])
