@@ -330,7 +330,7 @@ class AgriDashboard {
 
 	// ------------------------------------------------------------ grid
 	buildGrid() {
-		const cls = { Master: "master", Fogger: "fogger", Pulse: "" };
+		const cls = { Master: "master", Fogger: "fogger", "Fogger Valve": "fogger", Pulse: "" };
 		this.$root.find(".agri-grid").html(this.relays.map((r) => `
 			<div class="agri-card ${cls[r.type]}" id="agri-card-${r.index}">
 				<div class="agri-top">
@@ -444,7 +444,7 @@ class AgriDashboard {
 		const r = this.relays.find((x) => x.index === idx);
 		this.edit = JSON.parse(JSON.stringify(r.schedule));
 		this.editIdx = idx;
-		const isMaster = this.edit.type === "none";
+		const isMaster = this.edit.type === "none" || this.edit.type === "valve";
 		this.sd = new frappe.ui.Dialog({
 			title: __("Edit schedule — {0} {1}", [r.label, r.name]),
 			fields: [{ fieldtype: "HTML", fieldname: "body" }],
@@ -469,30 +469,42 @@ class AgriDashboard {
 			$b.html(`<p>${__("R1 Master turns ON automatically whenever any other relay is active. No schedule editing needed.")}</p>`);
 			return;
 		}
+		const r2 = this.relays.find((x) => x.index === 1), r14 = this.relays.find((x) => x.index === 13);
+		const p1 = r2 ? r2.schedule.pulseS : 9, p2 = r14 && r14.type === "Fogger" ? r14.schedule.pulseS : 0;
+		// one minute: valves R9..R13 each P1 s in turn (1 s overlap), pump 1..5*P1, then R14
+		const timeline = (P, P2) => {
+			const L = 5 * P + 1, row = (name, a, b) => `<tr><td>${name}</td><td class="text-right">${a}–${b} s</td></tr>`;
+			let h = row(__("Fogger valve 1 (R9)"), 0, P + 1);
+			for (let k = 1; k < 5; k++) h += row(__("Fogger valve {0} (R{1})", [k + 1, k + 9]), k * P, (k + 1) * P + 1);
+			h += row(`<b>${__("R2 pump")}</b>`, 1, 5 * P);
+			if (P2) h += row(__("R14 Fogger 2"), L, L + P2);
+			return `<table class="table table-sm table-borderless ag-note" style="max-width:340px;margin:6px 0 0">${h}</table>`;
+		};
+		if (s.type === "valve") {
+			$b.html(`<p>${__("This fogger valve opens in turn with the R2 fogger pump. Set the hours and seconds on R2 — every valve gets the same seconds.")}</p>
+				<p class="ag-note">${__("Each minute in R2's hours:")}</p>${timeline(p1, p2)}`);
+			return;
+		}
 		if (s.type === "fogger") {
-			// R2 runs first in each minute, R14 right after it; together max 60 s
-			const other = this.relays.find((x) => x.index === (this.editIdx === 1 ? 13 : 1));
-			const otherS = other && other.type === "Fogger" ? other.schedule.pulseS : 0;
-			const maxS = Math.min(this.editIdx === 1 ? 55 : 59, 60 - otherS);
-			const first = this.editIdx === 1;
-			const timing = !other || other.type !== "Fogger" ? "" : first
-				? __("Runs first in each minute: seconds 0 – {0}. R14 Fogger 2 then runs {1}s right after.", ["<b class='ag-from'>" + s.pulseS + "</b>", otherS])
-				: __("Runs right after R2 Fogger 1 in each minute: seconds {0} – {1}. Never at the same time.", [otherS, "<b class='ag-to'>" + (otherS + s.pulseS) + "</b>"]);
-			const fwNote = !first && (this.data.fw || 1) < 2
-				? `<p class="ag-note" style="color:var(--text-on-orange)">${__("The ESP32 is on firmware v{0}. Flash firmware v2 before sending Fogger 2 settings.", [this.data.fw || 1])}</p>` : "";
+			const isPump = this.editIdx === 1;
+			const maxS = isPump ? Math.max(1, Math.min(11, Math.floor((59 - p2) / 5))) : 60 - (5 * p1 + 1);
+			const fwNote = (this.data.fw || 1) < 4
+				? `<p class="ag-note" style="color:var(--text-on-orange)">${__("The ESP32 is on firmware v{0}. Flash firmware v4 so the pump drives the fogger valves R9–R13.", [this.data.fw || 1])}</p>` : "";
 			$b.html(`
 				<div class="ag-se">
-					<div class="ag-r"><span class="ag-lbl" style="min-width:120px">${__("Active window")}</span>
+					<div class="ag-r"><span class="ag-lbl" style="min-width:140px">${__("Active hours")}</span>
 						<input class="form-control ag-in" id="ag-fsh" type="number" min="0" max="23" value="${s.startH}"><span class="ag-lbl">:00 ${__("to")}</span>
 						<input class="form-control ag-in" id="ag-feh" type="number" min="0" max="23" value="${s.endH}"><span class="ag-lbl">:00 (24h)</span></div>
-					<div class="ag-r"><span class="ag-lbl" style="min-width:120px">${__("Pulse ON / min")}</span>
+					<div class="ag-r"><span class="ag-lbl" style="min-width:140px">${isPump ? __("Seconds per valve") : __("Seconds ON / min")}</span>
 						<input class="form-control ag-in" id="ag-fps" type="number" min="1" max="${maxS}" value="${s.pulseS}"><span class="ag-lbl">${__("seconds (max {0})", [maxS])}</span></div>
-					<p class="ag-note">${__("Fogger turns ON for the set seconds every minute within the active window.")}</p>
-					${timing ? `<p class="ag-note">${timing}</p>` : ""}${fwNote}
+					<p class="ag-note">${isPump
+						? __("Every minute in these hours the fogger valves R9 → R13 open one after another for these seconds each, and the pump runs while they do.")
+						: __("Runs every minute in these hours, right after the fogger valve cycle — never together with the R2 pump.")}</p>
+					<div class="ag-tl">${timeline(isPump ? s.pulseS : p1, isPump ? p2 : s.pulseS)}</div>${fwNote}
 				</div>`);
 			$b.find("#ag-fps").on("input", (e) => {
-				const v = parseInt(e.target.value, 10) || 0;
-				if (first) $b.find(".ag-from").text(v); else $b.find(".ag-to").text(otherS + v);
+				const v = Math.max(1, Math.min(maxS, parseInt(e.target.value, 10) || 1));
+				$b.find(".ag-tl").html(timeline(isPump ? v : p1, isPump ? p2 : v));
 			});
 			this.foggerMax = maxS;
 			return;

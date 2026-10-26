@@ -1,7 +1,7 @@
 """Firmware v2: R14 (index 13) is Fogger 2 instead of Zone 12."""
 import frappe
 
-from agri_control.payloads import DEFAULT_SCHED, FOG2, label
+from agri_control.payloads import DEFAULT_SCHED, FOG1, FOG2, fog_cycle, label
 
 
 def execute():
@@ -15,5 +15,8 @@ def execute():
         doc.relay_name = "Fogger 2"
     doc.slots = []
     doc.relay_type = "Fogger"
-    doc.set_schedule(DEFAULT_SCHED[FOG2])
+    sched = dict(DEFAULT_SCHED[FOG2])
+    p1 = frappe.db.get_value("Relay Config", label(FOG1), "fog_pulse_sec") or 9
+    sched["pulseS"] = max(1, min(sched["pulseS"], 60 - fog_cycle(min(int(p1), 11))))  # must fit after the valve cycle
+    doc.set_schedule(sched)
     doc.save(ignore_permissions=True)

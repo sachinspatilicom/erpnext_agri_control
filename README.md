@@ -63,10 +63,12 @@ schedules back, so ERPNext is the master copy.
 | `agri/log` | ESP → ERP | text, e.g. `R3 (Zone1) ON by schedule` |
 
 Days bitmask: **bit 0 = Sunday … bit 6 = Saturday** (127 every day, 62 weekdays, 65 weekend).
-R1 Master has no schedule (it follows the others). R2 Fogger 1 and R14 Fogger 2 (firmware v2) each have
-their own hour window and seconds per minute. Every minute R2 runs first (seconds 0–P1) and R14 right
-after it (P1–P1+P2), so they never run together; P1 + P2 must be 60 or less. The firmware reports its
-version as `"fw"` in `agri/status`; ERPNext only sends R14 fogger settings to firmware v2 or later.
+R1 Master has no schedule (it follows the others). **Firmware v4:** R2 is the fogger **pump** feeding five
+fogger valves R9–R13. Every minute in R2's hours the valves open one after another for R2's seconds each
+(valve k: `k·P … (k+1)·P + 1` s — the next opens 1 s before the previous closes) and the pump runs
+`1 … 5·P` s, so it never pushes against closed valves (with every valve closed by hand it won't start).
+R14 Fogger 2 runs right after the cycle (`5·P + 1 … + P2`). Limits: P ≤ 11 and 5·P + 1 + P2 ≤ 60.
+R9–R13 have no schedule of their own. The firmware reports `"fw"`; R14 fogger settings need fw ≥ 2.
 
 ## Temperature / humidity sensor (firmware v3)
 

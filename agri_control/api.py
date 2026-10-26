@@ -6,7 +6,7 @@ from frappe.utils import add_to_date, cint, getdate, now_datetime
 
 from agri_control.mqtt import (CACHE_BROKER, CACHE_HEARTBEAT, CACHE_STATUS, add_log, cache,
                                mqtt_publish)
-from agri_control.payloads import (FOG2, FOG2_MIN_FW, NUM_RELAYS, label, normalize_schedule,
+from agri_control.payloads import (FOG2, FOG2_MIN_FW, FOGV, NUM_RELAYS, label, normalize_schedule,
                                    valid_command)
 
 ROLES = ("System Manager", "Agri Operator")
@@ -153,7 +153,7 @@ def push_schedule(relay_index):
     _check()
     doc = _relay(relay_index)
     if not _push(doc):
-        frappe.throw("R1 Master has no schedule")
+        frappe.throw("This relay has no schedule of its own (R1 Master and the R9-R13 fogger valves follow other relays)")
     add_log(f"Schedule sent to {doc.name} {doc.relay_name}: {doc.get_summary()}",
             source="User", user=frappe.session.user)
     return {"success": True}
@@ -245,7 +245,7 @@ def import_old_app(data):
     updated = 0
     for idx in range(NUM_RELAYS):
         doc = _relay(idx)
-        if idx < len(names) and names[idx] and not (idx == FOG2 and str(names[idx]).startswith("Zone")):
+        if idx < len(names) and names[idx] and not ((idx == FOG2 or idx in FOGV) and str(names[idx]).startswith("Zone")):
             doc.relay_name = str(names[idx])
         if idx < len(locs) and locs[idx] is not None:
             doc.location = str(locs[idx])

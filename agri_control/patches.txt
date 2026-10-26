@@ -2,3 +2,4 @@
 
 [post_model_sync]
 agri_control.patches.r14_fogger2
+agri_control.patches.r9_r13_fogger_valves

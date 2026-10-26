@@ -2,7 +2,7 @@ import frappe
 from frappe.model.document import Document
 from frappe.utils import cint
 
-from agri_control.payloads import (DAY_KEYS, FOG1, FOG2, MAX_SLOTS, NUM_RELAYS, clamp,
+from agri_control.payloads import (DAY_KEYS, FOG1, FOG1_MAX, FOG2, MAX_SLOTS, NUM_RELAYS, clamp,
                                    days_from_mask, fogger_conflict, hm, label, mask_from_days,
                                    normalize_schedule, relay_type, schedule_payload, summary)
 
@@ -22,7 +22,7 @@ class RelayConfig(Document):
 
         self.fog_start_hour = clamp(self.fog_start_hour, 0, 23, 9)
         self.fog_end_hour = clamp(self.fog_end_hour, 0, 23, 21)
-        self.fog_pulse_sec = clamp(self.fog_pulse_sec, 1, 55 if idx == FOG1 else 59, 9)
+        self.fog_pulse_sec = clamp(self.fog_pulse_sec, 1, FOG1_MAX if idx == FOG1 else 59, 9)
         if self.relay_type == "Fogger":
             other = label(FOG2 if idx == FOG1 else FOG1)
             other_pulse = frappe.db.get_value("Relay Config", other, "fog_pulse_sec")
@@ -45,6 +45,8 @@ class RelayConfig(Document):
     def get_schedule(self):
         if self.relay_type == "Master":
             return {"type": "none"}
+        if self.relay_type == "Fogger Valve":
+            return {"type": "valve"}
         if self.relay_type == "Fogger":
             return {"type": "fogger", "startH": cint(self.fog_start_hour),
                     "endH": cint(self.fog_end_hour), "pulseS": cint(self.fog_pulse_sec)}
@@ -69,4 +71,6 @@ class RelayConfig(Document):
         return schedule_payload(self.relay_index, self.get_schedule())
 
     def get_summary(self):
-        return summary(self.get_schedule(), cint(self.relay_index))
+        p1 = frappe.db.get_value("Relay Config", label(FOG1), "fog_pulse_sec") \
+            if self.relay_type == "Fogger Valve" else None
+        return summary(self.get_schedule(), cint(self.relay_index), p1)

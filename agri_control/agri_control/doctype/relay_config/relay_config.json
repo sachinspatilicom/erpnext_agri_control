@@ -20,6 +20,8 @@
   "fog_pulse_sec",
   "pulse_section",
   "slots",
+  "valve_section",
+  "valve_note",
   "master_section",
   "master_note"
  ],
@@ -51,13 +53,13 @@
    "fieldtype": "Column Break"
   },
   {
-   "description": "Fixed by the firmware: R1 Master, R2 Fogger 1, R3-R13 timed slots, R14 Fogger 2 (firmware v2)",
+   "description": "Fixed by the firmware: R1 Master, R2 Fogger pump, R3-R8 timed slots, R9-R13 fogger valves 1-5, R14 Fogger 2",
    "fieldname": "relay_type",
    "fieldtype": "Select",
    "in_list_view": 1,
    "in_standard_filter": 1,
    "label": "Type",
-   "options": "Master\nFogger\nPulse",
+   "options": "Master\nFogger\nFogger Valve\nPulse",
    "read_only": 1
   },
   {
@@ -91,7 +93,7 @@
   },
   {
    "default": "9",
-   "description": "R2 runs first in each minute, R14 right after it. R2 + R14 seconds must be 60 or less.",
+   "description": "R2: seconds EACH fogger valve (R9-R13) stays open, 1-11; the pump runs 5 \u00d7 this. R14: seconds after the valve cycle. 5 \u00d7 R2 + 1 + R14 must be 60 or less.",
    "fieldname": "fog_pulse_sec",
    "fieldtype": "Int",
    "label": "Seconds ON per minute"
@@ -107,6 +109,17 @@
    "fieldtype": "Table",
    "label": "Slots (max 6)",
    "options": "Relay Schedule Slot"
+  },
+  {
+   "depends_on": "eval:doc.relay_type=='Fogger Valve'",
+   "fieldname": "valve_section",
+   "fieldtype": "Section Break"
+  },
+  {
+   "fieldname": "valve_note",
+   "fieldtype": "HTML",
+   "label": "Valve note",
+   "options": "<p class='text-muted'>This fogger valve opens in turn with the R2 fogger pump: valves R9 \u2192 R13 each stay open for R2's seconds, every minute in R2's hours. Set the seconds and hours on R2.</p>"
   },
   {
    "depends_on": "eval:doc.relay_type=='Master'",

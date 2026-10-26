@@ -22,13 +22,28 @@ ACTIONS = ("ON", "OFF", "AUTO")
 FOG1, FOG2 = 1, 13                 # R2, R14
 FOGGERS = (FOG1, FOG2)
 FOG2_MIN_FW = 2                    # firmware version that knows R14 is Fogger 2
+FOGV = tuple(range(8, 13))         # R9..R13 = fogger valves 1..5 (firmware v4)
+FOGV_MIN_FW = 4
+FOG1_MAX = 11                      # 5 valves x 11 s + 1 s overlap = 56 s
+
+
+def fog_cycle(p1):
+    """Seconds the 5-valve cycle uses each minute (Fogger 2 starts after it)."""
+    return len(FOGV) * int(p1) + 1
+
+
+def valve_window(index, p1):
+    """(open_from, close_at) seconds of the minute for fogger valve R9..R13."""
+    k = int(index) - FOGV[0]
+    return k * int(p1), (k + 1) * int(p1) + 1
 
 DAY_EVERY, DAY_WEEKDAYS, DAY_WEEKEND = 127, 62, 65
 DAY_KEYS = ("sun", "mon", "tue", "wed", "thu", "fri", "sat")   # bit order
 PRESETS = {"Every day": DAY_EVERY, "Weekdays": DAY_WEEKDAYS, "Weekend": DAY_WEEKEND}
 
-DEFAULT_NAMES = ["Master", "Fogger", "Zone 1", "Zone 2", "Zone 3", "Zone 4", "Zone 5",
-                 "Zone 6", "Zone 7", "Zone 8", "Zone 9", "Zone 10", "Zone 11", "Fogger 2"]
+DEFAULT_NAMES = ["Master", "Fogger pump", "Zone 1", "Zone 2", "Zone 3", "Zone 4", "Zone 5",
+                 "Zone 6", "Fogger valve 1", "Fogger valve 2", "Fogger valve 3", "Fogger valve 4",
+                 "Fogger valve 5", "Fogger 2"]
 
 
 def _twice(h, m, dur):
@@ -39,15 +54,15 @@ def _twice(h, m, dur):
 # Same as initDefaultSchedules() in the firmware and DEFAULT_SCHED in the old web app
 DEFAULT_SCHED = (
     [{"type": "none"}, {"type": "fogger", "startH": 9, "endH": 21, "pulseS": 9}]
-    + [{"type": "pulse", "entries": _twice(9, 30, 3)} for _ in range(2, 9)]
-    + [{"type": "pulse", "entries": [{"h": 8, "m": m, "dur": 5, "days": DAY_EVERY}]}
-       for m in (30, 35, 40, 45)]
+    + [{"type": "pulse", "entries": _twice(9, 30, 3)} for _ in range(2, 8)]
+    + [{"type": "valve"} for _ in FOGV]                                     # R9-R13 fogger valves (fw v4)
     + [{"type": "fogger", "startH": 9, "endH": 21, "pulseS": 9}]          # R14 Fogger 2 (fw v2)
 )
 
 
 def relay_type(index):
-    return "Master" if int(index) == 0 else "Fogger" if int(index) in FOGGERS else "Pulse"
+    i = int(index)
+    return "Master" if i == 0 else "Fogger" if i in FOGGERS else "Fogger Valve" if i in FOGV else "Pulse"
 
 
 def label(index):
@@ -102,12 +117,14 @@ def normalize_schedule(index, sched):
     sched = sched or {}
     if kind == "Master":
         return {"type": "none"}
+    if kind == "Fogger Valve":
+        return {"type": "valve"}
     if kind == "Fogger":
         return {
             "type": "fogger",
             "startH": clamp(sched.get("startH"), 0, 23, 9),
             "endH": clamp(sched.get("endH"), 0, 23, 21),
-            "pulseS": clamp(sched.get("pulseS"), 1, 55 if index == FOG1 else 59, 9),
+            "pulseS": clamp(sched.get("pulseS"), 1, FOG1_MAX if index == FOG1 else 59, 9),
         }
     entries = []
     for e in (sched.get("entries") or [])[:MAX_SLOTS]:
@@ -124,21 +141,28 @@ def normalize_schedule(index, sched):
 def schedule_payload(index, sched):
     """Exact JSON the firmware's handleScheduleUpdate() expects. None for Master."""
     s = normalize_schedule(index, sched)
-    if s["type"] == "none":
+    if s["type"] in ("none", "valve"):
         return None
     return {"relay": int(index), **s}
 
 
-def summary(sched, index=None):
-    """Same wording as schedSummary() in the old web app."""
+def summary(sched, index=None, p1=None):
+    """Same wording as schedSummary() in the old web app. p1 = R2 seconds (for valve text)."""
     if not sched or sched.get("type") == "none":
         return "Auto-controlled"
+    if sched.get("type") == "valve":
+        if p1:
+            a, b = valve_window(index, p1)
+            return f"Valve {int(index) - FOGV[0] + 1} of 5: opens {a}–{b} s each minute with R2 pump"
+        return "Opens in turn with the R2 fogger pump"
 
     def h12(h):
         return f"{h % 12 or 12}{'PM' if h >= 12 else 'AM'}"
 
     if sched["type"] == "fogger":
-        after = " after R2" if index == FOG2 else ""
+        if index == FOG1:
+            return f"{h12(sched['startH'])} – {h12(sched['endH'])}  |  {sched['pulseS']}s per valve × 5"
+        after = " after valves" if index == FOG2 else ""
         return f"{h12(sched['startH'])} – {h12(sched['endH'])}  |  {sched['pulseS']}s ON/min{after}"
     if not sched.get("entries"):
         return "No schedule"
@@ -212,12 +236,17 @@ class ClimateAverager:
 
 
 def fogger_conflict(index, pulse_s, other_pulse_s):
-    """Error text if R2 + R14 seconds don't fit in one minute, else None."""
-    if int(pulse_s) + int(other_pulse_s or 0) <= 60:
+    """Error text if the 5-valve cycle (5 x R2 + 1 s) plus R14 doesn't fit in one minute, else None."""
+    p1, p2 = (int(pulse_s), int(other_pulse_s or 0)) if int(index) == FOG1 else (int(other_pulse_s or 0), int(pulse_s))
+    if fog_cycle(p1) + p2 <= 60:
         return None
-    other = "R14 Fogger 2" if int(index) == FOG1 else "R2 Fogger"
-    return (f"Fogger 1 and Fogger 2 run one after the other inside each minute, so their seconds must add up "
-            f"to 60 or less. {other} uses {other_pulse_s}s, so this one can be at most {60 - int(other_pulse_s)}s.")
+    if int(index) == FOG1:
+        best = max(1, (60 - 1 - p2) // len(FOGV))
+        return (f"The R2 pump runs 5 fogger valves one after another ({len(FOGV)} × {p1} s + 1 s = {fog_cycle(p1)} s), "
+                f"then R14 Fogger 2 runs {p2} s, all inside one minute. With R14 at {p2} s, R2 can be at most "
+                f"{best} s per valve — or lower R14 first.")
+    return (f"R14 Fogger 2 runs after the 5-valve cycle, which takes {fog_cycle(p1)} s with R2 at {p1} s per valve. "
+            f"So this one can be at most {60 - fog_cycle(p1)}s.")
 
 
 def parse_heartbeat(text):
