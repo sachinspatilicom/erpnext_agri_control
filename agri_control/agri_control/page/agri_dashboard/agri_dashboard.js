@@ -472,16 +472,24 @@ class AgriDashboard {
 		const r2 = this.relays.find((x) => x.index === 1), r14 = this.relays.find((x) => x.index === 13);
 		const p1 = r2 ? r2.schedule.pulseS : 9, p2 = r14 && r14.type === "Fogger" ? r14.schedule.pulseS : 0;
 		// one minute: valves R9..R13 each P1 s in turn (1 s overlap), pump 1..5*P1, then R14
+		// valves under manual control (ON or OFF) are skipped by the firmware; the rest close up
+		const st = (this.lastStatus && this.lastStatus.relays) || [];
+		const manual = (idx) => { const x = st.find((r) => r.id === idx); return x && x.manual ? (x.state ? "ON" : "OFF") : null; };
 		const timeline = (P, P2) => {
-			const L = 5 * P + 1, row = (name, a, b) => `<tr><td>${name}</td><td class="text-right">${a}–${b} s</td></tr>`;
-			let h = row(__("Fogger valve 1 (R9)"), 0, P + 1);
-			for (let k = 1; k < 5; k++) h += row(__("Fogger valve {0} (R{1})", [k + 1, k + 9]), k * P, (k + 1) * P + 1);
-			h += row(`<b>${__("R2 pump")}</b>`, 1, 5 * P);
-			if (P2) h += row(__("R14 Fogger 2"), L, L + P2);
+			const row = (name, txt) => `<tr><td>${name}</td><td class="text-right">${txt}</td></tr>`;
+			let h = "", k = 0;
+			for (let v = 0; v < 5; v++) {
+				const name = __("Fogger valve {0} (R{1})", [v + 1, v + 9]), m = manual(v + 8);
+				if (m) h += row(name, `<span class="text-muted">${__("skipped — manual {0}", [m])}</span>`);
+				else { h += row(name, `${k * P}–${(k + 1) * P + 1} s`); k++; }
+			}
+			const L = k ? k * P + 1 : 0;
+			h += row(`<b>${__("R2 pump")}</b>`, k ? `${1}–${Math.max(k * P, 2)} s` : __("off — no valve on AUTO"));
+			if (P2) h += row(__("R14 Fogger 2"), `${L}–${L + P2} s`);
 			return `<table class="table table-sm table-borderless ag-note" style="max-width:340px;margin:6px 0 0">${h}</table>`;
 		};
 		if (s.type === "valve") {
-			$b.html(`<p>${__("This fogger valve opens in turn with the R2 fogger pump. Set the hours and seconds on R2 — every valve gets the same seconds.")}</p>
+			$b.html(`<p>${__("This fogger valve opens in turn with the R2 fogger pump. Set the hours and seconds on R2 — every valve gets the same seconds. Press OFF on the card to skip this valve (the others close up, the pump keeps running); AUTO puts it back in the turns.")}</p>
 				<p class="ag-note">${__("Each minute in R2's hours:")}</p>${timeline(p1, p2)}`);
 			return;
 		}
