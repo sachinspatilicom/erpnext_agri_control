@@ -485,7 +485,9 @@ class AgriDashboard {
 				else { h += row(name, `${k * P}–${(k + 1) * P + 1} s`); k++; }
 			}
 			const L = k ? k * P + 1 : 0;
-			h += row(`<b>${__("R2 pump")}</b>`, k ? `${1}–${Math.max(k * P, 2)} s` : __("off — no valve on AUTO"));
+			const anyManualOn = [8, 9, 10, 11, 12].some((i) => manual(i) === "ON");
+			h += row(`<b>${__("R2 pump")}</b>`, anyManualOn ? __("ON all the time (a valve is manually ON)")
+				: k ? `0–${k * P + 1} s` : __("off — no valve on AUTO"));
 			if (P2) h += row(__("R14 Fogger 2"), `${L}–${L + P2} s`);
 			return `<table class="table table-sm table-borderless ag-note" style="max-width:340px;margin:6px 0 0">${h}</table>`;
 		};
@@ -526,7 +528,7 @@ class AgriDashboard {
 					<div class="ag-r"><span class="ag-lbl" style="min-width:140px">${isPump ? __("Seconds per valve") : __("Seconds ON / min")}</span>
 						<input class="form-control ag-in" id="ag-fps" type="number" min="1" max="${maxS}" value="${s.pulseS}"><span class="ag-lbl">${__("seconds (max {0})", [maxS])}</span></div>
 					<p class="ag-note">${isPump
-						? __("Every minute in these hours the fogger valves R9 → R13 open one after another for these seconds each, and the pump runs while they do.")
+						? __("Every minute in these hours the fogger valves R9 → R13 open one after another for these seconds each. The pump runs whenever a fogger valve is open.")
 						: __("Runs every minute in these hours, right after the fogger valve cycle — never together with the R2 pump.")}</p>
 					<div class="ag-tl">${timeline(isPump ? s.pulseS : p1, isPump ? p2 : s.pulseS)}</div>${fwNote}
 				</div>`);

@@ -65,8 +65,8 @@ schedules back, so ERPNext is the master copy.
 Days bitmask: **bit 0 = Sunday … bit 6 = Saturday** (127 every day, 62 weekdays, 65 weekend).
 R1 Master has no schedule (it follows the others). **Firmware v4:** R2 is the fogger **pump** feeding five
 fogger valves R9–R13. Every minute in R2's hours the valves open one after another for R2's seconds each
-(valve k: `k·P … (k+1)·P + 1` s — the next opens 1 s before the previous closes) and the pump runs
-`1 … 5·P` s, so it never pushes against closed valves (with every valve closed by hand it won't start).
+(valve k: `k·P … (k+1)·P + 1` s — the next opens 1 s before the previous closes). **Firmware v7:** the pump
+runs whenever any fogger valve is open (schedule or manual ON) and never against closed valves.
 R14 Fogger 2 runs right after the cycle (`5·P + 1 … + P2`). Limits: P ≤ 11 and 5·P + 1 + P2 ≤ 60.
 A fogger valve switched ON or OFF by hand (firmware v5) is skipped: the remaining AUTO valves close up,
 the pump runs n·P seconds without a gap and R14 starts right after. AUTO puts the valve back in its turn.
