@@ -25,6 +25,8 @@ FOG2_MIN_FW = 2                    # firmware version that knows R14 is Fogger 2
 FOGV = tuple(range(8, 13))         # R9..R13 = fogger valves 1..5 (firmware v4)
 FOGV_MIN_FW = 4
 FOG1_MAX = 11                      # 5 valves x 11 s + 1 s overlap = 56 s
+COOLERS = (5, 6)                   # R6, R7 = Air Cooler 1, 2 (firmware v6)
+COOLER_MIN_FW = 6
 
 
 def fog_cycle(p1):
@@ -41,7 +43,7 @@ DAY_EVERY, DAY_WEEKDAYS, DAY_WEEKEND = 127, 62, 65
 DAY_KEYS = ("sun", "mon", "tue", "wed", "thu", "fri", "sat")   # bit order
 PRESETS = {"Every day": DAY_EVERY, "Weekdays": DAY_WEEKDAYS, "Weekend": DAY_WEEKEND}
 
-DEFAULT_NAMES = ["Master", "Fogger pump", "Zone 1", "Zone 2", "Zone 3", "Zone 4", "Zone 5",
+DEFAULT_NAMES = ["Master", "Fogger pump", "Zone 1", "Zone 2", "Zone 3", "Air Cooler 1", "Air Cooler 2",
                  "Zone 6", "Fogger valve 1", "Fogger valve 2", "Fogger valve 3", "Fogger valve 4",
                  "Fogger valve 5", "Fogger 2"]
 
@@ -54,7 +56,9 @@ def _twice(h, m, dur):
 # Same as initDefaultSchedules() in the firmware and DEFAULT_SCHED in the old web app
 DEFAULT_SCHED = (
     [{"type": "none"}, {"type": "fogger", "startH": 9, "endH": 21, "pulseS": 9}]
-    + [{"type": "pulse", "entries": _twice(9, 30, 3)} for _ in range(2, 8)]
+    + [{"type": "pulse", "entries": _twice(9, 30, 3)} for _ in range(2, 5)]
+    + [{"type": "cooler", "offStartH": 3, "offEndH": 7} for _ in COOLERS]   # R6, R7 air coolers (fw v6)
+    + [{"type": "pulse", "entries": _twice(9, 30, 3)}]                      # R8
     + [{"type": "valve"} for _ in FOGV]                                     # R9-R13 fogger valves (fw v4)
     + [{"type": "fogger", "startH": 9, "endH": 21, "pulseS": 9}]          # R14 Fogger 2 (fw v2)
 )
@@ -62,7 +66,8 @@ DEFAULT_SCHED = (
 
 def relay_type(index):
     i = int(index)
-    return "Master" if i == 0 else "Fogger" if i in FOGGERS else "Fogger Valve" if i in FOGV else "Pulse"
+    return ("Master" if i == 0 else "Fogger" if i in FOGGERS else "Fogger Valve" if i in FOGV
+            else "Air Cooler" if i in COOLERS else "Pulse")
 
 
 def label(index):
@@ -119,6 +124,9 @@ def normalize_schedule(index, sched):
         return {"type": "none"}
     if kind == "Fogger Valve":
         return {"type": "valve"}
+    if kind == "Air Cooler":
+        return {"type": "cooler", "offStartH": clamp(sched.get("offStartH"), 0, 23, 3),
+                "offEndH": clamp(sched.get("offEndH"), 0, 23, 7)}
     if kind == "Fogger":
         return {
             "type": "fogger",
@@ -158,6 +166,12 @@ def summary(sched, index=None, p1=None):
 
     def h12(h):
         return f"{h % 12 or 12}{'PM' if h >= 12 else 'AM'}"
+
+    if sched.get("type") == "cooler":
+        a, b = sched["offStartH"], sched["offEndH"]
+        if a == b:
+            return "ON all day (no OFF hours)"
+        return f"ON all day, OFF {h12(a)} – {h12(b)}"
 
     if sched["type"] == "fogger":
         if index == FOG1:

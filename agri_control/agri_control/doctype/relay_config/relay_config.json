@@ -13,6 +13,10 @@
   "column_break_1",
   "relay_type",
   "last_sent",
+  "cooler_section",
+  "cool_off_start",
+  "column_break_cool",
+  "cool_off_end",
   "fogger_section",
   "fog_start_hour",
   "fog_end_hour",
@@ -53,13 +57,13 @@
    "fieldtype": "Column Break"
   },
   {
-   "description": "Fixed by the firmware: R1 Master, R2 Fogger pump, R3-R8 timed slots, R9-R13 fogger valves 1-5, R14 Fogger 2",
+   "description": "Fixed by the firmware: R1 Master, R2 Fogger pump, R3-R5 + R8 timed slots, R6-R7 air coolers, R9-R13 fogger valves 1-5, R14 Fogger 2",
    "fieldname": "relay_type",
    "fieldtype": "Select",
    "in_list_view": 1,
    "in_standard_filter": 1,
    "label": "Type",
-   "options": "Master\nFogger\nFogger Valve\nPulse",
+   "options": "Master\nFogger\nFogger Valve\nAir Cooler\nPulse",
    "read_only": 1
   },
   {
@@ -68,6 +72,29 @@
    "label": "Schedule Last Sent",
    "no_copy": 1,
    "read_only": 1
+  },
+  {
+   "depends_on": "eval:doc.relay_type=='Air Cooler'",
+   "fieldname": "cooler_section",
+   "fieldtype": "Section Break",
+   "label": "Air cooler: OFF hours"
+  },
+  {
+   "default": "3",
+   "fieldname": "cool_off_start",
+   "fieldtype": "Int",
+   "label": "OFF from (hour, 0-23)"
+  },
+  {
+   "fieldname": "column_break_cool",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "7",
+   "description": "The cooler runs all the time except between these hours. Can cross midnight (e.g. 22 to 6). Same hour twice = always ON.",
+   "fieldname": "cool_off_end",
+   "fieldtype": "Int",
+   "label": "ON again at (hour, 0-23)"
   },
   {
    "depends_on": "eval:doc.relay_type=='Fogger'",

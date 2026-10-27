@@ -20,6 +20,8 @@ class RelayConfig(Document):
         self.relay_type = relay_type(idx)
         self.relay_name = (self.relay_name or label(idx)).strip()[:30]
 
+        self.cool_off_start = clamp(self.cool_off_start, 0, 23, 3)
+        self.cool_off_end = clamp(self.cool_off_end, 0, 23, 7)
         self.fog_start_hour = clamp(self.fog_start_hour, 0, 23, 9)
         self.fog_end_hour = clamp(self.fog_end_hour, 0, 23, 21)
         self.fog_pulse_sec = clamp(self.fog_pulse_sec, 1, FOG1_MAX if idx == FOG1 else 59, 9)
@@ -47,6 +49,8 @@ class RelayConfig(Document):
             return {"type": "none"}
         if self.relay_type == "Fogger Valve":
             return {"type": "valve"}
+        if self.relay_type == "Air Cooler":
+            return {"type": "cooler", "offStartH": cint(self.cool_off_start), "offEndH": cint(self.cool_off_end)}
         if self.relay_type == "Fogger":
             return {"type": "fogger", "startH": cint(self.fog_start_hour),
                     "endH": cint(self.fog_end_hour), "pulseS": cint(self.fog_pulse_sec)}
@@ -58,7 +62,9 @@ class RelayConfig(Document):
 
     def set_schedule(self, sched):
         s = normalize_schedule(self.relay_index, sched)
-        if s["type"] == "fogger":
+        if s["type"] == "cooler":
+            self.cool_off_start, self.cool_off_end = s["offStartH"], s["offEndH"]
+        elif s["type"] == "fogger":
             self.fog_start_hour, self.fog_end_hour, self.fog_pulse_sec = s["startH"], s["endH"], s["pulseS"]
         elif s["type"] == "pulse":
             self.slots = []

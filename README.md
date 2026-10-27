@@ -70,7 +70,10 @@ fogger valves R9–R13. Every minute in R2's hours the valves open one after ano
 R14 Fogger 2 runs right after the cycle (`5·P + 1 … + P2`). Limits: P ≤ 11 and 5·P + 1 + P2 ≤ 60.
 A fogger valve switched ON or OFF by hand (firmware v5) is skipped: the remaining AUTO valves close up,
 the pump runs n·P seconds without a gap and R14 starts right after. AUTO puts the valve back in its turn.
-R9–R13 have no schedule of their own. The firmware reports `"fw"`; R14 fogger settings need fw ≥ 2.
+R9–R13 have no schedule of their own.
+**Firmware v6:** R6 / R7 are **Air Cooler 1 / 2** (230V). They run all the time except their OFF hours
+(default 03:00–07:00, set per cooler, may cross midnight; same hour twice = always ON). Payload
+`{"relay":5,"type":"cooler","offStartH":3,"offEndH":7}`. Coolers do not switch on the R1 Master 24V adapter. The firmware reports `"fw"`; R14 fogger settings need fw ≥ 2.
 
 ## Temperature / humidity sensor (firmware v3)
 

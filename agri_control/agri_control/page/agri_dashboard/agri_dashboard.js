@@ -36,6 +36,7 @@ const AGRI_CSS = `
 .agri-card.active { box-shadow:0 0 0 2px var(--ag-on), 0 0 12px rgba(39,174,96,.35); }
 .agri-card.master { border-color:var(--ag-master); }
 .agri-card.fogger { border-color:var(--ag-fogger); }
+.agri-card.cooler { border-color:#1abc9c; }
 .agri-top { display:flex; align-items:baseline; gap:6px; }
 .agri-rnum { font-size:var(--text-xs); font-weight:700; color:var(--ag-master); flex:none; }
 .agri-rname { font-weight:600; flex:1; min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
@@ -330,7 +331,7 @@ class AgriDashboard {
 
 	// ------------------------------------------------------------ grid
 	buildGrid() {
-		const cls = { Master: "master", Fogger: "fogger", "Fogger Valve": "fogger", Pulse: "" };
+		const cls = { Master: "master", Fogger: "fogger", "Fogger Valve": "fogger", "Air Cooler": "cooler", Pulse: "" };
 		this.$root.find(".agri-grid").html(this.relays.map((r) => `
 			<div class="agri-card ${cls[r.type]}" id="agri-card-${r.index}">
 				<div class="agri-top">
@@ -488,6 +489,25 @@ class AgriDashboard {
 			if (P2) h += row(__("R14 Fogger 2"), `${L}–${L + P2} s`);
 			return `<table class="table table-sm table-borderless ag-note" style="max-width:340px;margin:6px 0 0">${h}</table>`;
 		};
+		if (s.type === "cooler") {
+			const fwNote = (this.data.fw || 1) < 6
+				? `<p class="ag-note" style="color:var(--text-on-orange)">${__("The ESP32 is on firmware v{0}. Flash firmware v6 before sending air cooler hours.", [this.data.fw || 1])}</p>` : "";
+			const desc = (a, b) => a === b ? __("ON all day and night (no OFF hours).")
+				: __("ON all day, OFF from {0}:00 to {1}:00{2}.", [a, b, a > b ? " " + __("(across midnight)") : ""]);
+			$b.html(`
+				<div class="ag-se">
+					<div class="ag-r"><span class="ag-lbl" style="min-width:140px">${__("OFF from")}</span>
+						<input class="form-control ag-in" id="ag-coff" type="number" min="0" max="23" value="${s.offStartH}"><span class="ag-lbl">:00 ${__("to")}</span>
+						<input class="form-control ag-in" id="ag-con" type="number" min="0" max="23" value="${s.offEndH}"><span class="ag-lbl">:00 (24h)</span></div>
+					<p class="ag-note ag-cdesc">${desc(s.offStartH, s.offEndH)}</p>
+					<p class="ag-note">${__("Press OFF on the card to stop it now; AUTO returns to these hours.")}</p>${fwNote}
+				</div>`);
+			$b.find("#ag-coff, #ag-con").on("input", () => {
+				const a = +$b.find("#ag-coff").val() || 0, c = +$b.find("#ag-con").val() || 0;
+				$b.find(".ag-cdesc").text(desc(a, c));
+			});
+			return;
+		}
 		if (s.type === "valve") {
 			$b.html(`<p>${__("This fogger valve opens in turn with the R2 fogger pump. Set the hours and seconds on R2 — every valve gets the same seconds. Press OFF on the card to skip this valve (the others close up, the pump keeps running); AUTO puts it back in the turns.")}</p>
 				<p class="ag-note">${__("Each minute in R2's hours:")}</p>${timeline(p1, p2)}`);
@@ -563,6 +583,11 @@ class AgriDashboard {
 	readSched() {
 		const s = this.edit, $b = this.$sb;
 		const clamp = (v, lo, hi, d) => { v = parseInt(v, 10); return isNaN(v) ? d : Math.min(hi, Math.max(lo, v)); };
+		if (s.type === "cooler") {
+			s.offStartH = clamp($b.find("#ag-coff").val(), 0, 23, 3);
+			s.offEndH = clamp($b.find("#ag-con").val(), 0, 23, 7);
+			return;
+		}
 		if (s.type === "fogger") {
 			s.startH = clamp($b.find("#ag-fsh").val(), 0, 23, 9);
 			s.endH = clamp($b.find("#ag-feh").val(), 0, 23, 21);

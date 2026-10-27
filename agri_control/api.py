@@ -6,7 +6,8 @@ from frappe.utils import add_to_date, cint, getdate, now_datetime
 
 from agri_control.mqtt import (CACHE_BROKER, CACHE_HEARTBEAT, CACHE_STATUS, add_log, cache,
                                mqtt_publish)
-from agri_control.payloads import (FOG2, FOG2_MIN_FW, FOGV, NUM_RELAYS, label, normalize_schedule,
+from agri_control.payloads import (COOLER_MIN_FW, COOLERS, FOG2, FOG2_MIN_FW, FOGV, NUM_RELAYS, label,
+                                   normalize_schedule,
                                    valid_command)
 
 ROLES = ("System Manager", "Agri Operator")
@@ -109,6 +110,11 @@ def _device_fw():
 
 def _check_fw(doc):
     """Old firmware (v1) treats ANY fogger message as Fogger 1 — never send it R14 fogger settings."""
+    if doc.relay_index in COOLERS and _device_fw() < COOLER_MIN_FW:
+        frappe.throw(
+            f"The ESP32 is running firmware v{_device_fw()}, which still treats {doc.name} as a zone valve. "
+            f"Flash firmware v{COOLER_MIN_FW} first. The cooler hours are saved in ERPNext and can be sent afterwards.",
+            title="Firmware update needed")
     if doc.relay_index == FOG2 and _device_fw() < FOG2_MIN_FW:
         frappe.throw(
             f"The ESP32 is running firmware v{_device_fw()}, which doesn't know R14 is Fogger 2 "
@@ -168,6 +174,9 @@ def push_all_schedules():
         doc = frappe.get_doc("Relay Config", name)
         if doc.relay_index == FOG2 and _device_fw() < FOG2_MIN_FW:
             skipped.append(f"{doc.name} (needs firmware v{FOG2_MIN_FW})")
+            continue
+        if doc.relay_index in COOLERS and _device_fw() < COOLER_MIN_FW:
+            skipped.append(f"{doc.name} (needs firmware v{COOLER_MIN_FW})")
             continue
         if _push(doc):
             count += 1
@@ -245,11 +254,12 @@ def import_old_app(data):
     updated = 0
     for idx in range(NUM_RELAYS):
         doc = _relay(idx)
-        if idx < len(names) and names[idx] and not ((idx == FOG2 or idx in FOGV) and str(names[idx]).startswith("Zone")):
+        if idx < len(names) and names[idx] and not ((idx == FOG2 or idx in FOGV or idx in COOLERS)
+                                                    and str(names[idx]).startswith("Zone")):
             doc.relay_name = str(names[idx])
         if idx < len(locs) and locs[idx] is not None:
             doc.location = str(locs[idx])
-        if idx < len(scheds) and isinstance(scheds[idx], dict) and idx != FOG2:  # old app: R14 was a zone
+        if idx < len(scheds) and isinstance(scheds[idx], dict) and idx != FOG2 and idx not in COOLERS:  # old app: zones
             doc.set_schedule(normalize_schedule(idx, scheds[idx]))
         doc.save(ignore_permissions=True)
         updated += 1
